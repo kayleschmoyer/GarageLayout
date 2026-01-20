@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useState, createContext } from 'react';
+import React, { useState, createContext, useEffect, useCallback, useRef } from 'react';
 import { CssVarsProvider, useColorScheme, extendTheme } from '@mui/joy/styles';
 import CssBaseline from '@mui/joy/CssBaseline';
 import GarageSelector from './components/GarageSelector';
@@ -134,6 +134,97 @@ function AppContent() {
   const [selectedGarage, setSelectedGarage] = useState(null);
   const [selectedLevel, setSelectedLevel] = useState(null);
   const [selectedDevice, setSelectedDevice] = useState(null);
+  const initialLoadRef = useRef(true);
+
+  // Helper to create URL-friendly slug
+  const toSlug = (str) => str?.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || '';
+
+  // Update browser URL based on current state
+  const updateUrl = useCallback((garageId, levelId) => {
+    const garage = garages.find(g => g.id === garageId);
+    if (!garage) {
+      window.history.pushState({}, '', '/');
+      return;
+    }
+    
+    const level = garage.levels.find(l => l.id === levelId);
+    if (level) {
+      window.history.pushState({}, '', `/${toSlug(garage.name)}/${toSlug(level.name)}`);
+    } else {
+      window.history.pushState({}, '', `/${toSlug(garage.name)}`);
+    }
+  }, [garages]);
+
+  // Parse URL and restore state on mount only
+  useEffect(() => {
+    // Only parse URL on initial load, not on every garages change
+    if (!initialLoadRef.current) return;
+    
+    const parseUrl = () => {
+      const path = window.location.pathname;
+      const parts = path.split('/').filter(Boolean);
+      
+      if (parts.length >= 1) {
+        const garageSlug = parts[0];
+        const garage = garages.find(g => toSlug(g.name) === garageSlug);
+        if (garage) {
+          setSelectedGarage(garage.id);
+          
+          if (parts.length >= 2) {
+            const levelSlug = parts[1];
+            const level = garage.levels.find(l => toSlug(l.name) === levelSlug);
+            if (level) {
+              setSelectedLevel(level.id);
+              setCurrentView('editor');
+            } else {
+              setCurrentView('levels');
+            }
+          } else {
+            setCurrentView('levels');
+          }
+        }
+      }
+      initialLoadRef.current = false;
+    };
+    
+    parseUrl();
+    
+    // Handle browser back/forward
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      const parts = path.split('/').filter(Boolean);
+      
+      if (parts.length === 0) {
+        setSelectedGarage(null);
+        setSelectedLevel(null);
+        setCurrentView('garages');
+      } else if (parts.length >= 1) {
+        const garageSlug = parts[0];
+        const garage = garages.find(g => toSlug(g.name) === garageSlug);
+        if (garage) {
+          setSelectedGarage(garage.id);
+          
+          if (parts.length >= 2) {
+            const levelSlug = parts[1];
+            const level = garage.levels.find(l => toSlug(l.name) === levelSlug);
+            if (level) {
+              setSelectedLevel(level.id);
+              setCurrentView('editor');
+            } else {
+              setSelectedLevel(null);
+              setCurrentView('levels');
+            }
+          } else {
+            setSelectedLevel(null);
+            setCurrentView('levels');
+          }
+        }
+      }
+    };
+    
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [garages]);
 
   // Get current data
   const currentGarage = garages.find(g => g.id === selectedGarage);
@@ -152,11 +243,21 @@ function AppContent() {
     setSelectedGarage(garageId);
     setSelectedLevel(null);
     setCurrentView('levels');
+    updateUrl(garageId, null);
   };
 
   const selectLevel = (levelId) => {
     setSelectedLevel(levelId);
     setCurrentView('editor');
+    updateUrl(selectedGarage, levelId);
+  };
+
+  // Wrapper for setSelectedLevel that also updates URL
+  const setSelectedLevelWithUrl = (levelId) => {
+    // Convert to number if it's a string (from dropdown)
+    const numericLevelId = typeof levelId === 'string' ? parseInt(levelId, 10) : levelId;
+    setSelectedLevel(numericLevelId);
+    updateUrl(selectedGarage, numericLevelId);
   };
 
   const goBack = () => {
@@ -164,9 +265,11 @@ function AppContent() {
       setSelectedLevel(null);
       setSelectedDevice(null);
       setCurrentView('levels');
+      updateUrl(selectedGarage, null);
     } else if (currentView === 'levels') {
       setSelectedGarage(null);
       setCurrentView('garages');
+      window.history.pushState({}, '', '/');
     }
   };
 
@@ -178,7 +281,7 @@ function AppContent() {
       selectGarage,
       levels, setLevels, 
       selectedLevelId: selectedLevel, 
-      setSelectedLevelId: setSelectedLevel, 
+      setSelectedLevelId: setSelectedLevelWithUrl, 
       selectLevel,
       currentLevel,
       selectedDevice, setSelectedDevice,

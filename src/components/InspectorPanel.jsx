@@ -237,6 +237,46 @@ const InspectorPanel = () => {
           )}
         </div>
 
+        {/* ===== EXTERNAL URL (for cameras and signs) ===== */}
+        {(isCamera || isSign) && (
+          <div className="inspector-section-compact">
+            <label className="section-title-small">External URL</label>
+            <div className="url-input-row">
+              <input
+                type="text"
+                value={device.externalUrl || ''}
+                placeholder="https://device-admin.local/..."
+                onChange={(e) => updateDevice(device.id, { externalUrl: e.target.value })}
+              />
+              <button 
+                className="copy-url-btn"
+                onClick={() => navigator.clipboard.writeText(device.externalUrl || '')}
+                title="Copy URL"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+              </button>
+            </div>
+            {device.externalUrl && (
+              <a 
+                href={device.externalUrl.match(/^https?:\/\//) ? device.externalUrl : `https://${device.externalUrl}`} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="open-url-btn"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                  <polyline points="15 3 21 3 21 9"/>
+                  <line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+                Open in Browser
+              </a>
+            )}
+          </div>
+        )}
+
         {/* ===== CAMERA VIEW IMAGE ===== */}
         {isCamera && (
           <div className="inspector-section-compact">

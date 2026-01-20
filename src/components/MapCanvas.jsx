@@ -48,6 +48,157 @@ const MapCanvas = () => {
     return Math.round(value / GRID_SIZE) * GRID_SIZE;
   };
 
+  // Smart snap - finds nearby elements and snaps to their edges, also sets rotation
+  const smartSnap = (x, y, currentElementId, currentType) => {
+    const layoutElements = currentLevel?.layoutElements || [];
+    const SNAP_THRESHOLD = 40; // Distance to trigger smart snap
+    
+    let snapX = snapToGrid(x);
+    let snapY = snapToGrid(y);
+    let snapRotation = null; // null means don't change rotation
+    
+    // Get dimensions of current element type
+    const getCurrentDimensions = () => {
+      switch(currentType) {
+        case 'spot': return { w: 40, h: 60 };
+        case 'lane': return { w: 60, h: 200 };
+        case 'curve': return { w: 80, h: 160 };
+        case 'entrance': return { w: 80, h: 30 };
+        case 'ramp': return { w: 60, h: 100 };
+        default: return { w: 40, h: 40 };
+      }
+    };
+    
+    const current = getCurrentDimensions();
+    
+    // Find elements
+    const lanes = layoutElements.filter(el => el.type === 'lane' && el.id !== currentElementId);
+    const spots = layoutElements.filter(el => el.type === 'spot' && el.id !== currentElementId);
+    
+    if (currentType === 'spot') {
+      let bestSnap = null;
+      let bestDistance = Infinity;
+      
+      // Find the closest lane edge to snap to
+      for (const lane of lanes) {
+        const laneW = lane.width || 60;
+        const laneLen = lane.length || 200;
+        const isVertical = lane.direction === 'up' || lane.direction === 'down';
+        
+        if (!isVertical) { // Horizontal lane (left/right direction)
+          const laneHalfW = laneLen / 2;
+          const laneHalfH = laneW / 2;
+          
+          // Check if x is within lane's horizontal span
+          if (x >= lane.x - laneHalfW - current.w && x <= lane.x + laneHalfW + current.w) {
+            // Top edge of lane - spots face down (rotation 180)
+            const topY = lane.y - laneHalfH - current.h / 2;
+            const topDist = Math.abs(y - topY);
+            if (topDist < SNAP_THRESHOLD && topDist < bestDistance) {
+              bestDistance = topDist;
+              bestSnap = { y: topY, rotation: 180, laneX: lane.x, laneHalfW };
+            }
+            
+            // Bottom edge of lane - spots face up (rotation 0)
+            const bottomY = lane.y + laneHalfH + current.h / 2;
+            const bottomDist = Math.abs(y - bottomY);
+            if (bottomDist < SNAP_THRESHOLD && bottomDist < bestDistance) {
+              bestDistance = bottomDist;
+              bestSnap = { y: bottomY, rotation: 0, laneX: lane.x, laneHalfW };
+            }
+          }
+        } else { // Vertical lane (up/down direction)
+          const laneHalfW = laneW / 2;
+          const laneHalfH = laneLen / 2;
+          
+          // Check if y is within lane's vertical span
+          if (y >= lane.y - laneHalfH - current.h && y <= lane.y + laneHalfH + current.h) {
+            // Left edge of lane - spots face right (rotation 90)
+            const leftX = lane.x - laneHalfW - current.w / 2;
+            const leftDist = Math.abs(x - leftX);
+            if (leftDist < SNAP_THRESHOLD && leftDist < bestDistance) {
+              bestDistance = leftDist;
+              bestSnap = { x: leftX, rotation: 90, laneY: lane.y, laneHalfH };
+            }
+            
+            // Right edge of lane - spots face left (rotation -90)
+            const rightX = lane.x + laneHalfW + current.w / 2;
+            const rightDist = Math.abs(x - rightX);
+            if (rightDist < SNAP_THRESHOLD && rightDist < bestDistance) {
+              bestDistance = rightDist;
+              bestSnap = { x: rightX, rotation: -90, laneY: lane.y, laneHalfH };
+            }
+          }
+        }
+      }
+      
+      if (bestSnap) {
+        if (bestSnap.y !== undefined) snapY = bestSnap.y;
+        if (bestSnap.x !== undefined) snapX = bestSnap.x;
+        snapRotation = bestSnap.rotation;
+      }
+      
+      // Snap spots to align with other spots (same row/column)
+      for (const spot of spots) {
+        const spotW = spot.width || 40;
+        
+        // If same row (similar Y), align and snap adjacent
+        if (Math.abs(snapY - spot.y) < SNAP_THRESHOLD / 2) {
+          snapY = spot.y;
+          
+          // Snap to be adjacent horizontally
+          const rightOfSpot = spot.x + spotW;
+          const leftOfSpot = spot.x - spotW;
+          
+          if (Math.abs(x - rightOfSpot) < SNAP_THRESHOLD) {
+            snapX = rightOfSpot;
+          } else if (Math.abs(x - leftOfSpot) < SNAP_THRESHOLD) {
+            snapX = leftOfSpot;
+          }
+          
+          // Copy rotation from adjacent spot
+          if (snapRotation === null) {
+            snapRotation = spot.rotation || 0;
+          }
+        }
+        
+        // If same column (similar X), align vertically
+        if (Math.abs(snapX - spot.x) < SNAP_THRESHOLD / 2) {
+          snapX = spot.x;
+        }
+      }
+    }
+    
+    if (currentType === 'lane') {
+      // Snap lanes to align with other lanes (parallel stacking)
+      for (const lane of lanes) {
+        const laneW = lane.width || 60;
+        const laneLen = lane.length || 200;
+        const isVertical = lane.direction === 'up' || lane.direction === 'down';
+        
+        if (!isVertical) {
+          // Align X centers
+          if (Math.abs(x - lane.x) < SNAP_THRESHOLD) {
+            snapX = lane.x;
+          }
+          
+          // Stack below with proper spacing (lane width + 2 spot heights + gap)
+          const stackDistance = laneW + 60 * 2 + 40; // lane + spots on both sides + gap
+          const belowY = lane.y + stackDistance;
+          if (Math.abs(y - belowY) < SNAP_THRESHOLD) {
+            snapY = belowY;
+          }
+        }
+      }
+    }
+    
+    // Final grid snap
+    snapX = snapToGrid(snapX);
+    snapY = snapToGrid(snapY);
+    
+    return { x: snapX, y: snapY, rotation: snapRotation };
+  };
+
   const updateDevice = (deviceId, updates) => {
     const updatedGarages = garages.map(g => {
       if (g.id === selectedGarageId) {
@@ -97,17 +248,21 @@ const MapCanvas = () => {
   };
 
   const addLayoutElement = (type, x, y) => {
+    // Use smart snap to align with existing elements
+    const snapped = smartSnap(x, y, null, type);
+    
     const newElement = {
       id: `layout-${Date.now()}`,
       type,
-      x: snapToGrid(x),
-      y: snapToGrid(y),
-      rotation: 0,
-      ...(type === 'spot' && { spotType: 'regular', width: 40, height: 80 }),
-      ...(type === 'lane' && { width: 60, length: 120, direction: 'up' }),
+      x: snapped.x,
+      y: snapped.y,
+      rotation: snapped.rotation !== null ? snapped.rotation : 0,
+      // Dimensions match auto-mapper for consistency
+      ...(type === 'spot' && { spotType: 'regular', width: 40, height: 60 }),
+      ...(type === 'lane' && { width: 60, length: 200, direction: 'right' }),
       ...(type === 'entrance' && { direction: 'in', width: 80 }),
       ...(type === 'ramp' && { width: 60, length: 100, targetLevel: null }),
-      ...(type === 'curve' && { width: 60, height: 120, direction: 'right' })
+      ...(type === 'curve' && { width: 60, height: 160, direction: 'right' })
     };
 
     const updatedGarages = garages.map(g => {
@@ -163,11 +318,22 @@ const MapCanvas = () => {
   };
 
   const handleLayoutDragEnd = (id, e) => {
-    const snappedX = snapToGrid(e.target.x());
-    const snappedY = snapToGrid(e.target.y());
-    e.target.x(snappedX);
-    e.target.y(snappedY);
-    updateLayoutElement(id, { x: snappedX, y: snappedY });
+    // Find current element to get its type
+    const element = (currentLevel?.layoutElements || []).find(el => el.id === id);
+    const elementType = element?.type || 'spot';
+    
+    // Use smart snap for intelligent alignment and auto-rotation
+    const snapped = smartSnap(e.target.x(), e.target.y(), id, elementType);
+    e.target.x(snapped.x);
+    e.target.y(snapped.y);
+    
+    const updates = { x: snapped.x, y: snapped.y };
+    // Apply rotation if smart snap determined one
+    if (snapped.rotation !== null) {
+      updates.rotation = snapped.rotation;
+      e.target.rotation(snapped.rotation);
+    }
+    updateLayoutElement(id, updates);
   };
 
   const handleStageClick = (e) => {
@@ -546,9 +712,9 @@ const MapCanvas = () => {
         {/* Spot outline */}
         <Rect
           x={-(element.width || 40) / 2}
-          y={-(element.height || 80) / 2}
+          y={-(element.height || 60) / 2}
           width={element.width || 40}
-          height={element.height || 80}
+          height={element.height || 60}
           fill={colors.fill}
           stroke={isSelected ? '#fff' : colors.stroke}
           strokeWidth={isSelected ? 2 : 1.5}
@@ -577,7 +743,7 @@ const MapCanvas = () => {
             fontSize={10}
             fill={isDark ? '#fff' : '#333'}
             offsetX={element.spotNumber.length * 3}
-            y={(element.height || 80) / 2 - 15}
+            y={(element.height || 60) / 2 - 15}
           />
         )}
       </Group>

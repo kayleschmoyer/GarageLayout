@@ -9,7 +9,8 @@ const EditorView = () => {
     garages, 
     setGarages,
     selectedGarageId, 
-    selectedLevelId, 
+    selectedLevelId,
+    setSelectedLevelId,
     selectedDevice,
     setSelectedDevice,
     goBack, 
@@ -37,7 +38,9 @@ const EditorView = () => {
     serialAddress: '',
     spotNumber: '',
     parkingType: 'regular',
-    sensorImage: null
+    sensorImage: null,
+    // External URL for cameras and signs
+    externalUrl: ''
   });
   const fileInputRef = useRef(null);
   const sensorImageRef = useRef(null);
@@ -124,6 +127,8 @@ const EditorView = () => {
                 rotation: isCamera ? (newDevice.rotation || 0) : undefined,
                 flowDestination: isCamera ? newDevice.flowDestination : undefined,
                 viewImage: isCamera ? newDevice.viewImage : undefined,
+                // External URL for cameras and signs
+                externalUrl: (isCamera || isSign) ? newDevice.externalUrl : undefined,
                 // Sign-specific fields
                 previewUrl: isDesignableSign ? newDevice.previewUrl : undefined,
                 displayMapping: isStaticSign ? (newDevice.displayMapping.length > 0 ? newDevice.displayMapping : [selectedLevelId]) : undefined,
@@ -151,11 +156,11 @@ const EditorView = () => {
       return g;
     });
     setGarages(updatedGarages);
-    setNewDevice({ type: '', name: '', ipAddress: '', port: '', direction: 'in', rotation: 0, flowDestination: 'garage-entry', viewImage: null, previewUrl: '', displayMapping: [], overrideState: 'auto', serialAddress: '', spotNumber: '', parkingType: 'regular', sensorImage: null });
+    setNewDevice({ type: '', name: '', ipAddress: '', port: '', direction: 'in', rotation: 0, flowDestination: 'garage-entry', viewImage: null, previewUrl: '', displayMapping: [], overrideState: 'auto', serialAddress: '', spotNumber: '', parkingType: 'regular', sensorImage: null, externalUrl: '' });
     setShowAddForm(false);
   };
 
-  // Export PDF with all levels - matches canvas dark mode style
+  // Export PDF with all levels - Premium professional design
   const exportLayoutPDF = async () => {
     const pdf = new jsPDF({
       orientation: 'landscape',
@@ -165,7 +170,6 @@ const EditorView = () => {
 
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 30;
 
     for (let levelIndex = 0; levelIndex < garage.levels.length; levelIndex++) {
       const currentLevel = garage.levels[levelIndex];
@@ -174,374 +178,583 @@ const EditorView = () => {
         pdf.addPage();
       }
 
-      // Dark background for entire page
-      pdf.setFillColor(30, 32, 38);
+      // === BACKGROUND - Subtle gradient effect ===
+      // Main dark background
+      pdf.setFillColor(18, 20, 28);
       pdf.rect(0, 0, pageWidth, pageHeight, 'F');
-
-      // Header bar
-      pdf.setFillColor(45, 48, 56);
-      pdf.rect(0, 0, pageWidth, 50, 'F');
       
+      // Subtle vignette overlay at edges
+      pdf.setFillColor(12, 14, 20);
+      pdf.rect(0, 0, pageWidth, 8, 'F');
+      pdf.rect(0, pageHeight - 8, pageWidth, 8, 'F');
+
+      // === HEADER - Modern sleek design ===
+      const headerHeight = 55;
+      
+      // Header background with subtle gradient
+      pdf.setFillColor(28, 32, 42);
+      pdf.rect(0, 0, pageWidth, headerHeight, 'F');
+      
+      // Accent line under header
+      pdf.setFillColor(59, 130, 246);
+      pdf.rect(0, headerHeight - 2, pageWidth, 2, 'F');
+      
+      // Logo/Brand area indicator
+      pdf.setFillColor(59, 130, 246);
+      pdf.roundedRect(20, 12, 4, 30, 2, 2, 'F');
+      
+      // Garage name - Large bold
       pdf.setTextColor(255, 255, 255);
-      pdf.setFontSize(18);
+      pdf.setFontSize(22);
       pdf.setFont('helvetica', 'bold');
-      pdf.text(garage.name, margin, 32);
+      pdf.text(garage.name, 34, 35);
       
-      pdf.setFontSize(12);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(180, 180, 180);
-      pdf.text(`${currentLevel.name} - Layout Plan`, pageWidth - margin, 32, { align: 'right' });
+      // Level badge
+      const levelText = currentLevel.name;
+      pdf.setFontSize(11);
+      const levelTextWidth = pdf.getTextWidth(levelText) + 20;
+      pdf.setFillColor(59, 130, 246);
+      pdf.roundedRect(pageWidth - levelTextWidth - 20, 15, levelTextWidth, 26, 13, 13, 'F');
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(levelText, pageWidth - levelTextWidth/2 - 20, 33, { align: 'center' });
 
-      // Stats bar
-      pdf.setFillColor(38, 40, 48);
-      pdf.rect(0, 50, pageWidth, 25, 'F');
-      
-      pdf.setTextColor(150, 150, 150);
-      pdf.setFontSize(9);
+      // === STATS BAR - Clean pill design ===
+      const statsY = headerHeight + 12;
       const levelDevices = currentLevel.devices || [];
       const cameraCount = levelDevices.filter(d => d.type.startsWith('cam-')).length;
       const sensorCount = levelDevices.filter(d => d.type.startsWith('sensor-')).length;
       const signCount = levelDevices.filter(d => d.type.startsWith('sign-')).length;
-      const statsText = `Spots: ${currentLevel.totalSpots || 0}  |  EV: ${currentLevel.evSpots || 0}  |  ADA: ${currentLevel.adaSpots || 0}  |  Cameras: ${cameraCount}  |  Sensors: ${sensorCount}  |  Signs: ${signCount}`;
-      pdf.text(statsText, margin, 66);
       
-      const dateText = `${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
-      pdf.text(dateText, pageWidth - margin, 66, { align: 'right' });
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'normal');
+      
+      let statsX = 20;
+      const drawStatPill = (label, value, color) => {
+        const text = `${label}: ${value}`;
+        const textW = pdf.getTextWidth(text) + 16;
+        pdf.setFillColor(...color);
+        pdf.roundedRect(statsX, statsY, textW, 20, 10, 10, 'F');
+        pdf.setTextColor(255, 255, 255);
+        pdf.text(text, statsX + 8, statsY + 14);
+        statsX += textW + 8;
+      };
+      
+      drawStatPill('Spots', currentLevel.totalSpots || 0, [55, 65, 81]);
+      drawStatPill('EV', currentLevel.evSpots || 0, [22, 101, 52]);
+      drawStatPill('ADA', currentLevel.adaSpots || 0, [88, 28, 135]);
+      drawStatPill('Cameras', cameraCount, [30, 64, 175]);
+      drawStatPill('Sensors', sensorCount, [161, 98, 7]);
+      drawStatPill('Signs', signCount, [21, 128, 61]);
+      
+      // Date/time on right
+      pdf.setFillColor(40, 44, 52);
+      const dateText = new Date().toLocaleDateString('en-US', { 
+        weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+      const dateW = pdf.getTextWidth(dateText) + 16;
+      pdf.roundedRect(pageWidth - dateW - 20, statsY, dateW, 20, 10, 10, 'F');
+      pdf.setTextColor(160, 170, 180);
+      pdf.text(dateText, pageWidth - dateW/2 - 20, statsY + 14, { align: 'center' });
 
-      // Canvas area
-      const canvasY = 85;
-      const legendHeight = 70;
-      const canvasHeight = pageHeight - canvasY - legendHeight - 20;
-      const canvasWidth = pageWidth - margin * 2;
+      // === MAIN CANVAS AREA ===
+      const canvasMargin = 20;
+      const canvasY = statsY + 35;
+      const legendHeight = 50;
+      const canvasHeight = pageHeight - canvasY - legendHeight - 25;
+      const canvasWidth = pageWidth - canvasMargin * 2;
 
-      // Draw canvas background (darker area)
-      pdf.setFillColor(24, 26, 32);
-      pdf.rect(margin, canvasY, canvasWidth, canvasHeight, 'F');
+      // Canvas container with subtle border
+      pdf.setFillColor(22, 24, 32);
+      pdf.setDrawColor(40, 45, 55);
+      pdf.setLineWidth(1);
+      pdf.roundedRect(canvasMargin, canvasY, canvasWidth, canvasHeight, 8, 8, 'FD');
 
-      // Draw background image if exists
+      // Inner canvas area
+      const innerPad = 8;
+      pdf.setFillColor(16, 18, 26);
+      pdf.roundedRect(canvasMargin + innerPad, canvasY + innerPad, 
+                      canvasWidth - innerPad * 2, canvasHeight - innerPad * 2, 4, 4, 'F');
+
+      // Background image if exists
       if (currentLevel.bgImage) {
         try {
-          pdf.addImage(currentLevel.bgImage, 'JPEG', margin + 1, canvasY + 1, canvasWidth - 2, canvasHeight - 2);
-        } catch (e) {
-          // Background image failed, continue
-        }
+          pdf.addImage(currentLevel.bgImage, 'JPEG', 
+                       canvasMargin + innerPad, canvasY + innerPad, 
+                       canvasWidth - innerPad * 2, canvasHeight - innerPad * 2);
+        } catch (e) { /* Continue on error */ }
       }
 
-      // Calculate layout bounds to properly scale
+      // === CALCULATE BOUNDS ===
       const layoutElements = currentLevel.layoutElements || [];
-      let maxX = 800, maxY = 600;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      let hasContent = false;
+      
+      // Get element bounds accounting for rotation
+      const getElementBounds = (el) => {
+        const rotation = el.rotation || 0;
+        const isRotated90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
+        let w, h;
+        
+        switch(el.type) {
+          case 'lane': {
+            const isVertical = el.direction === 'up' || el.direction === 'down';
+            w = isVertical ? (el.width || 60) : (el.length || 200);
+            h = isVertical ? (el.length || 200) : (el.width || 60);
+            break;
+          }
+          case 'spot': {
+            w = el.width || 40;
+            h = el.height || 60;
+            // Swap dimensions if rotated 90 degrees
+            if (isRotated90) {
+              [w, h] = [h, w];
+            }
+            break;
+          }
+          case 'entrance': {
+            w = el.width || 80;
+            h = 30;
+            if (isRotated90) {
+              [w, h] = [h, w];
+            }
+            break;
+          }
+          case 'curve': w = (el.width || 60) + 20; h = el.height || 120; break;
+          case 'ramp': {
+            w = el.width || 60;
+            h = el.length || 100;
+            if (isRotated90) {
+              [w, h] = [h, w];
+            }
+            break;
+          }
+          default: w = el.width || 60; h = el.height || 60;
+        }
+        return { w, h };
+      };
+      
       layoutElements.forEach(el => {
-        const elRight = el.x + (el.width || el.length || 100);
-        const elBottom = el.y + (el.height || el.length || 100);
-        maxX = Math.max(maxX, elRight + 100);
-        maxY = Math.max(maxY, elBottom + 100);
+        hasContent = true;
+        const { w, h } = getElementBounds(el);
+        minX = Math.min(minX, el.x - w/2);
+        minY = Math.min(minY, el.y - h/2);
+        maxX = Math.max(maxX, el.x + w/2);
+        maxY = Math.max(maxY, el.y + h/2);
       });
       
-      // Scale to fit canvas area
-      const scaleX = canvasWidth / maxX;
-      const scaleY = canvasHeight / maxY;
-      const scale = Math.min(scaleX, scaleY) * 0.95;
-      const offsetX = margin + (canvasWidth - maxX * scale) / 2;
-      const offsetY = canvasY + (canvasHeight - maxY * scale) / 2;
+      levelDevices.forEach(d => {
+        hasContent = true;
+        minX = Math.min(minX, d.x - 40);
+        minY = Math.min(minY, d.y - 40);
+        maxX = Math.max(maxX, d.x + 40);
+        maxY = Math.max(maxY, d.y + 40);
+      });
+      
+      if (!hasContent) { minX = 0; minY = 0; maxX = 800; maxY = 600; }
+      
+      const padding = 30;
+      minX -= padding; minY -= padding; maxX += padding; maxY += padding;
+      
+      const contentW = maxX - minX;
+      const contentH = maxY - minY;
+      const drawableW = canvasWidth - innerPad * 2 - 20;
+      const drawableH = canvasHeight - innerPad * 2 - 20;
+      const scale = Math.min(drawableW / contentW, drawableH / contentH);
+      
+      const scaledW = contentW * scale;
+      const scaledH = contentH * scale;
+      const offsetX = canvasMargin + innerPad + 10 + (drawableW - scaledW) / 2 - minX * scale;
+      const offsetY = canvasY + innerPad + 10 + (drawableH - scaledH) / 2 - minY * scale;
 
-      // Draw layout elements in order: lanes first, then curves, then spots, then entrances
+      // === DRAW ELEMENTS ===
       const lanes = layoutElements.filter(el => el.type === 'lane');
       const curves = layoutElements.filter(el => el.type === 'curve');
       const spots = layoutElements.filter(el => el.type === 'spot');
       const entrances = layoutElements.filter(el => el.type === 'entrance');
       const ramps = layoutElements.filter(el => el.type === 'ramp');
 
-      // Draw lanes (semi-transparent gray)
-      lanes.forEach(element => {
-        const x = offsetX + element.x * scale;
-        const y = offsetY + element.y * scale;
-        const isVertical = element.direction === 'up' || element.direction === 'down';
-        const laneW = (isVertical ? (element.width || 60) : (element.length || 120)) * scale;
-        const laneH = (isVertical ? (element.length || 120) : (element.width || 60)) * scale;
+      // --- LANES ---
+      lanes.forEach(el => {
+        const x = offsetX + el.x * scale;
+        const y = offsetY + el.y * scale;
+        const isVertical = el.direction === 'up' || el.direction === 'down';
+        const laneW = (isVertical ? (el.width || 60) : (el.length || 120)) * scale;
+        const laneH = (isVertical ? (el.length || 120) : (el.width || 60)) * scale;
         
-        pdf.setFillColor(80, 90, 110);
-        pdf.setDrawColor(100, 110, 130);
-        pdf.setLineWidth(0.5);
-        pdf.roundedRect(x - laneW/2, y - laneH/2, laneW, laneH, 3, 3, 'FD');
+        // Shadow
+        pdf.setFillColor(10, 12, 18);
+        pdf.roundedRect(x - laneW/2 + 2, y - laneH/2 + 2, laneW, laneH, 4, 4, 'F');
         
-        // Draw dashed center line
-        pdf.setDrawColor(150, 160, 180);
-        pdf.setLineWidth(1);
-        pdf.setLineDashPattern([4, 3], 0);
+        // Lane body
+        pdf.setFillColor(65, 75, 95);
+        pdf.roundedRect(x - laneW/2, y - laneH/2, laneW, laneH, 4, 4, 'F');
+        
+        // Center dashed line
+        pdf.setDrawColor(120, 130, 150);
+        pdf.setLineWidth(Math.max(1, 1.5 * scale));
+        pdf.setLineDashPattern([6 * scale, 4 * scale], 0);
         if (isVertical) {
-          pdf.line(x, y - laneH/2 + 10, x, y + laneH/2 - 10);
+          pdf.line(x, y - laneH/2 + 8, x, y + laneH/2 - 8);
         } else {
-          pdf.line(x - laneW/2 + 10, y, x + laneW/2 - 10, y);
+          pdf.line(x - laneW/2 + 8, y, x + laneW/2 - 8, y);
         }
         pdf.setLineDashPattern([], 0);
         
-        // Draw direction arrow
-        const arrowSize = 6 * scale;
-        pdf.setFillColor(150, 160, 180);
-        if (element.direction === 'right') {
-          drawTriangle(pdf, x + laneW/2 - 15, y, arrowSize, 90);
-        } else if (element.direction === 'left') {
-          drawTriangle(pdf, x - laneW/2 + 15, y, arrowSize, -90);
-        } else if (element.direction === 'up') {
-          drawTriangle(pdf, x, y - laneH/2 + 15, arrowSize, 0);
-        } else if (element.direction === 'down') {
-          drawTriangle(pdf, x, y + laneH/2 - 15, arrowSize, 180);
+        // Direction arrow
+        pdf.setFillColor(140, 150, 170);
+        const arrSize = Math.max(4, 6 * scale);
+        const arrOffset = 12 * scale;
+        if (el.direction === 'right') drawTriangle(pdf, x + laneW/2 - arrOffset, y, arrSize, 90);
+        else if (el.direction === 'left') drawTriangle(pdf, x - laneW/2 + arrOffset, y, arrSize, -90);
+        else if (el.direction === 'up') drawTriangle(pdf, x, y - laneH/2 + arrOffset, arrSize, 0);
+        else if (el.direction === 'down') drawTriangle(pdf, x, y + laneH/2 - arrOffset, arrSize, 180);
+      });
+
+      // --- CURVES (U-turn connectors) ---
+      // jsPDF doesn't support per-corner radii in roundedRect, so we draw a one-sided rounded
+      // shape (flat on one side, rounded on the other) using cubic bezier segments.
+      curves.forEach(el => {
+        const x = offsetX + el.x * scale;
+        const y = offsetY + el.y * scale;
+        const w = (el.width || 60) * scale;
+        const curveW = w + 20 * scale;
+        const curveH = (el.height || 120) * scale;
+        const isRight = el.direction === 'right';
+
+        // Position matches canvas: isRight ? -w/2 : -curveW + w/2
+        const left = isRight ? (x - w / 2) : (x - curveW + w / 2);
+        const top = y - curveH / 2;
+        const r = Math.max(0, Math.min(curveH / 2, curveW));
+        const k = 4 / 3 * (Math.SQRT2 - 1); // cubic bezier quarter-circle constant
+
+        const drawOneSidedRounded = (ox, oy) => {
+          const L = left + ox;
+          const T = top + oy;
+          const W = curveW;
+          const H = curveH;
+          const R = r;
+          const kr = k * R;
+
+          if (isRight) {
+            // Flat on left, rounded on right
+            // Start at top-left
+            pdf.lines(
+              [
+                [W - R, 0],
+                // top-right quarter curve
+                [kr, 0, R, R - kr, R, R],
+                [0, H - 2 * R],
+                // bottom-right quarter curve
+                [0, kr, -R + kr, R, -R, R],
+                [-(W - R), 0],
+                [0, -H]
+              ],
+              L,
+              T,
+              [1, 1],
+              'F',
+              true
+            );
+          } else {
+            // Rounded on left, flat on right
+            // Start at top-left + radius
+            pdf.lines(
+              [
+                [W - R, 0],
+                [0, H],
+                [-(W - R), 0],
+                // bottom-left quarter curve
+                [-kr, 0, -R, -R + kr, -R, -R],
+                [0, -(H - 2 * R)],
+                // top-left quarter curve
+                [0, -kr, R - kr, -R, R, -R]
+              ],
+              L + R,
+              T,
+              [1, 1],
+              'F',
+              true
+            );
+          }
+        };
+
+        // Shadow
+        pdf.setFillColor(10, 12, 18);
+        drawOneSidedRounded(2, 2);
+
+        // Curve body
+        pdf.setFillColor(65, 75, 95);
+        drawOneSidedRounded(0, 0);
+      });
+
+      // --- SPOTS ---
+      spots.forEach(el => {
+        const x = offsetX + el.x * scale;
+        const y = offsetY + el.y * scale;
+        const rotation = el.rotation || 0;
+        const isRotated90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
+        
+        // Swap width/height if rotated 90 degrees
+        let spotW = (el.width || 40) * scale;
+        let spotH = (el.height || 60) * scale;
+        if (isRotated90) {
+          [spotW, spotH] = [spotH, spotW];
         }
-      });
-
-      // Draw curves
-      curves.forEach(element => {
-        const x = offsetX + element.x * scale;
-        const y = offsetY + element.y * scale;
-        const curveW = ((element.width || 60) + 20) * scale;
-        const curveH = (element.height || 120) * scale;
-        const isRight = element.direction === 'right';
         
-        pdf.setFillColor(80, 90, 110);
-        pdf.setDrawColor(100, 110, 130);
-        pdf.setLineWidth(0.5);
-        
-        const rx = isRight ? x - (element.width || 60) * scale / 2 : x - curveW + (element.width || 60) * scale / 2;
-        pdf.roundedRect(rx, y - curveH/2, curveW, curveH, curveH/4, curveH/4, 'FD');
-      });
-
-      // Draw spots with dashed outlines
-      spots.forEach(element => {
-        const x = offsetX + element.x * scale;
-        const y = offsetY + element.y * scale;
-        const spotW = (element.width || 40) * scale;
-        const spotH = (element.height || 60) * scale;
-        
-        // Set colors based on spot type
-        let fillColor, strokeColor;
-        if (element.spotType === 'ev') {
-          fillColor = [34, 70, 50]; // Dark green tint
-          strokeColor = [34, 197, 94]; // Green
-        } else if (element.spotType === 'ada') {
-          fillColor = [60, 40, 80]; // Dark purple tint
-          strokeColor = [168, 85, 247]; // Purple
+        let fillColor, strokeColor, iconColor;
+        if (el.spotType === 'ev') {
+          fillColor = [20, 60, 35]; strokeColor = [34, 197, 94]; iconColor = [74, 222, 128];
+        } else if (el.spotType === 'ada') {
+          fillColor = [50, 30, 70]; strokeColor = [168, 85, 247]; iconColor = [192, 132, 252];
         } else {
-          fillColor = [40, 55, 80]; // Dark blue tint
-          strokeColor = [59, 130, 246]; // Blue
+          fillColor = [30, 45, 70]; strokeColor = [59, 130, 246]; iconColor = [96, 165, 250];
         }
         
-        // Fill with dark tinted color
+        // Spot fill
         pdf.setFillColor(...fillColor);
         pdf.rect(x - spotW/2, y - spotH/2, spotW, spotH, 'F');
         
-        // Dashed outline
+        // Dashed border
         pdf.setDrawColor(...strokeColor);
-        pdf.setLineWidth(1);
-        pdf.setLineDashPattern([4, 2], 0);
+        pdf.setLineWidth(Math.max(0.75, 1.2 * scale));
+        pdf.setLineDashPattern([3 * scale, 2 * scale], 0);
         pdf.rect(x - spotW/2, y - spotH/2, spotW, spotH, 'D');
         pdf.setLineDashPattern([], 0);
         
-        // EV indicator
-        if (element.spotType === 'ev') {
-          pdf.setTextColor(34, 197, 94);
-          pdf.setFontSize(Math.max(8, 10 * scale));
-          pdf.text('⚡', x - 4 * scale, y + 3 * scale);
-        }
-        
-        // ADA indicator
-        if (element.spotType === 'ada') {
-          pdf.setTextColor(168, 85, 247);
-          pdf.setFontSize(Math.max(8, 10 * scale));
-          pdf.text('♿', x - 4 * scale, y + 3 * scale);
-        }
-        
-        // Spot number
-        if (element.spotNumber && element.spotType === 'regular') {
-          pdf.setTextColor(180, 190, 200);
-          pdf.setFontSize(Math.max(6, 7 * scale));
-          pdf.text(element.spotNumber, x, y + spotH/2 - 5 * scale, { align: 'center' });
+        // Icons/Numbers
+        const fontSize = Math.max(6, Math.min(9, 8 * scale));
+        pdf.setFontSize(fontSize);
+        if (el.spotType === 'ev') {
+          pdf.setTextColor(...iconColor);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text('EV', x, y + fontSize/3, { align: 'center' });
+        } else if (el.spotType === 'ada') {
+          pdf.setTextColor(...iconColor);
+          pdf.setFont('helvetica', 'bold');
+          pdf.text('ADA', x, y + fontSize/3, { align: 'center' });
+        } else if (el.spotNumber) {
+          pdf.setTextColor(140, 160, 190);
+          pdf.setFont('helvetica', 'normal');
+          pdf.text(el.spotNumber, x, y + fontSize/3, { align: 'center' });
         }
       });
 
-      // Draw entrances
-      entrances.forEach(element => {
-        const x = offsetX + element.x * scale;
-        const y = offsetY + element.y * scale;
-        const entW = (element.width || 60) * scale;
-        const isEntry = element.direction === 'in';
+      // --- ENTRANCES ---
+      entrances.forEach(el => {
+        const x = offsetX + el.x * scale;
+        const y = offsetY + el.y * scale;
+        const rotation = el.rotation || 0;
+        const isRotated90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
+        const isEntry = el.direction === 'in';
         
-        if (isEntry) {
-          pdf.setFillColor(34, 197, 94);
-        } else {
-          pdf.setFillColor(239, 68, 68);
+        let entW = (el.width || 80) * scale;
+        let entH = 16 * scale;
+        if (isRotated90) {
+          [entW, entH] = [entH, entW];
         }
         
-        // Draw gate bar
-        pdf.roundedRect(x - entW/2, y - 6 * scale, entW, 12 * scale, 3, 3, 'F');
+        const color = isEntry ? [34, 197, 94] : [239, 68, 68];
+        const darkColor = isEntry ? [22, 101, 52] : [153, 27, 27];
         
-        // Draw arrow
-        const arrowLen = 20 * scale;
-        pdf.setDrawColor(isEntry ? 34 : 239, isEntry ? 197 : 68, isEntry ? 94 : 68);
-        pdf.setLineWidth(2);
-        pdf.line(x - arrowLen, y, x + arrowLen, y);
-        drawTriangle(pdf, isEntry ? x + arrowLen : x - arrowLen, y, 6 * scale, isEntry ? 90 : -90);
+        // Shadow/glow
+        pdf.setFillColor(...darkColor);
+        pdf.roundedRect(x - entW/2, y - entH/2, entW, entH, 4, 4, 'F');
+        
+        // Main bar
+        pdf.setFillColor(...color);
+        pdf.roundedRect(x - entW/2 + 2, y - entH/2 + 2, entW - 4, entH - 4, 3, 3, 'F');
+        
+        // Arrow line
+        const arrowLen = (isRotated90 ? entH : entW) * 0.35;
+        pdf.setDrawColor(...color);
+        pdf.setLineWidth(Math.max(1.5, 2 * scale));
+        pdf.setLineDashPattern([4 * scale, 3 * scale], 0);
+        
+        if (isRotated90) {
+          // Vertical arrow
+          if (isEntry) {
+            pdf.line(x, y - arrowLen, x, y + arrowLen);
+          } else {
+            pdf.line(x, y + arrowLen, x, y - arrowLen);
+          }
+        } else {
+          // Horizontal arrow
+          if (isEntry) {
+            pdf.line(x - arrowLen, y, x + arrowLen, y);
+          } else {
+            pdf.line(x + arrowLen, y, x - arrowLen, y);
+          }
+        }
+        pdf.setLineDashPattern([], 0);
+        
+        // Arrow head direction based on rotation
+        pdf.setFillColor(...color);
+        let arrowAngle;
+        if (isRotated90) {
+          arrowAngle = isEntry ? 180 : 0;
+          drawTriangle(pdf, x, isEntry ? y + arrowLen : y - arrowLen, 5 * scale, arrowAngle);
+        } else {
+          arrowAngle = isEntry ? 90 : -90;
+          drawTriangle(pdf, isEntry ? x + arrowLen : x - arrowLen, y, 5 * scale, arrowAngle);
+        }
         
         // Label
         pdf.setTextColor(255, 255, 255);
         pdf.setFontSize(Math.max(7, 9 * scale));
         pdf.setFont('helvetica', 'bold');
         pdf.text(isEntry ? 'ENTRY' : 'EXIT', x, y + 3 * scale, { align: 'center' });
-        pdf.setFont('helvetica', 'normal');
       });
 
-      // Draw ramps
-      ramps.forEach(element => {
-        const x = offsetX + element.x * scale;
-        const y = offsetY + element.y * scale;
-        const rampW = (element.width || 60) * scale;
-        const rampH = (element.length || 100) * scale;
+      // --- RAMPS ---
+      ramps.forEach(el => {
+        const x = offsetX + el.x * scale;
+        const y = offsetY + el.y * scale;
+        const rotation = el.rotation || 0;
+        const isRotated90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
         
-        pdf.setFillColor(100, 70, 40);
-        pdf.roundedRect(x - rampW/2, y - rampH/2, rampW, rampH, 3, 3, 'F');
+        let rampW = (el.width || 60) * scale;
+        let rampH = (el.length || 100) * scale;
+        if (isRotated90) {
+          [rampW, rampH] = [rampH, rampW];
+        }
         
-        pdf.setTextColor(251, 146, 60);
-        pdf.setFontSize(Math.max(7, 8 * scale));
+        pdf.setFillColor(80, 50, 20);
+        pdf.roundedRect(x - rampW/2, y - rampH/2, rampW, rampH, 4, 4, 'F');
+        
+        // Striped pattern - based on orientation
+        pdf.setDrawColor(120, 80, 40);
+        pdf.setLineWidth(1);
+        if (isRotated90) {
+          // Vertical stripes for horizontal ramp
+          for (let i = 0; i < rampW; i += 8 * scale) {
+            pdf.line(x - rampW/2 + i, y - rampH/2 + 4, x - rampW/2 + i, y + rampH/2 - 4);
+          }
+        } else {
+          // Horizontal stripes for vertical ramp
+          for (let i = 0; i < rampH; i += 8 * scale) {
+            pdf.line(x - rampW/2 + 4, y - rampH/2 + i, x + rampW/2 - 4, y - rampH/2 + i);
+          }
+        }
+        
+        pdf.setTextColor(251, 191, 36);
+        pdf.setFontSize(Math.max(7, 9 * scale));
+        pdf.setFont('helvetica', 'bold');
         pdf.text('RAMP', x, y + 3 * scale, { align: 'center' });
       });
 
-      // Draw devices
+      // --- DEVICES ---
       levelDevices.forEach(device => {
         const x = offsetX + device.x * scale;
         const y = offsetY + device.y * scale;
-        const r = Math.max(5, 8 * scale);
+        const r = Math.max(6, 10 * scale);
 
-        // Draw camera view cone
+        // Camera view cone
         if (device.type.startsWith('cam-')) {
-          const coneRadius = 35 * scale;
-          const rotation = ((device.rotation || 0) - 90) * Math.PI / 180;
-          const coneAngle = 30 * Math.PI / 180;
+          const coneR = 50 * scale;
+          const rot = ((device.rotation || 0) - 90) * Math.PI / 180;
+          const coneAngle = 35 * Math.PI / 180;
           
-          // Draw cone as triangle
-          const x1 = x + Math.cos(rotation - coneAngle) * coneRadius;
-          const y1 = y + Math.sin(rotation - coneAngle) * coneRadius;
-          const x2 = x + Math.cos(rotation + coneAngle) * coneRadius;
-          const y2 = y + Math.sin(rotation + coneAngle) * coneRadius;
+          const x1 = x + Math.cos(rot - coneAngle) * coneR;
+          const y1 = y + Math.sin(rot - coneAngle) * coneR;
+          const x2 = x + Math.cos(rot + coneAngle) * coneR;
+          const y2 = y + Math.sin(rot + coneAngle) * coneR;
           
           pdf.setFillColor(59, 130, 246);
-          pdf.setGState(new pdf.GState({ opacity: 0.25 }));
+          pdf.setGState(new pdf.GState({ opacity: 0.2 }));
           pdf.triangle(x, y, x1, y1, x2, y2, 'F');
           pdf.setGState(new pdf.GState({ opacity: 1 }));
         }
 
-        // Device circle
-        if (device.type.startsWith('cam-')) {
-          pdf.setFillColor(59, 130, 246);
-        } else if (device.type.startsWith('sensor-')) {
-          pdf.setFillColor(245, 158, 11);
-        } else if (device.type.startsWith('sign-')) {
-          pdf.setFillColor(34, 197, 94);
-        }
-
+        // Device glow
+        let deviceColor;
+        if (device.type.startsWith('cam-')) deviceColor = [59, 130, 246];
+        else if (device.type.startsWith('sensor-')) deviceColor = [245, 158, 11];
+        else deviceColor = [34, 197, 94];
+        
+        // Outer glow
+        pdf.setFillColor(deviceColor[0] * 0.3, deviceColor[1] * 0.3, deviceColor[2] * 0.3);
+        pdf.circle(x, y, r + 3, 'F');
+        
+        // Main circle
+        pdf.setFillColor(...deviceColor);
+        pdf.circle(x, y, r, 'F');
+        
+        // Inner highlight
+        pdf.setFillColor(Math.min(255, deviceColor[0] + 60), Math.min(255, deviceColor[1] + 60), Math.min(255, deviceColor[2] + 60));
+        pdf.circle(x - r * 0.2, y - r * 0.2, r * 0.35, 'F');
+        
         // White border
         pdf.setDrawColor(255, 255, 255);
         pdf.setLineWidth(1.5);
-        pdf.circle(x, y, r, 'FD');
+        pdf.circle(x, y, r, 'D');
 
-        // Device label
-        pdf.setTextColor(220, 220, 220);
-        pdf.setFontSize(Math.max(6, 7 * scale));
-        pdf.text(device.name, x, y + r + 10 * scale, { align: 'center' });
+        // Device name
+        pdf.setTextColor(200, 210, 220);
+        pdf.setFontSize(Math.max(6, 8 * scale));
+        pdf.setFont('helvetica', 'normal');
+        pdf.text(device.name, x, y + r + 12 * scale, { align: 'center' });
       });
 
-      // Legend bar at bottom
-      const legendY = pageHeight - legendHeight - 10;
-      pdf.setFillColor(38, 40, 48);
-      pdf.roundedRect(margin, legendY, pageWidth - margin * 2, legendHeight, 5, 5, 'F');
+      // === LEGEND BAR ===
+      const legendY = pageHeight - legendHeight - 12;
+      
+      // Legend container
+      pdf.setFillColor(28, 32, 42);
+      pdf.setDrawColor(45, 50, 60);
+      pdf.setLineWidth(1);
+      pdf.roundedRect(canvasMargin, legendY, canvasWidth, legendHeight, 6, 6, 'FD');
 
-      pdf.setTextColor(220, 220, 220);
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('Legend', margin + 15, legendY + 18);
-      pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'normal');
+      
+      let lx = canvasMargin + 20;
+      const ly = legendY + legendHeight/2 + 3;
+      
+      const drawLegendItem = (label, type, color, secondary) => {
+        if (type === 'circle') {
+          pdf.setFillColor(...color);
+          pdf.circle(lx, ly - 1, 5, 'F');
+          pdf.setDrawColor(255, 255, 255);
+          pdf.setLineWidth(0.75);
+          pdf.circle(lx, ly - 1, 5, 'D');
+          lx += 12;
+        } else if (type === 'bar') {
+          pdf.setFillColor(...color);
+          pdf.roundedRect(lx - 2, ly - 5, 20, 10, 2, 2, 'F');
+          lx += 24;
+        } else if (type === 'spot') {
+          pdf.setFillColor(...color);
+          pdf.rect(lx - 2, ly - 6, 10, 12, 'F');
+          pdf.setDrawColor(...secondary);
+          pdf.setLineDashPattern([2, 1], 0);
+          pdf.rect(lx - 2, ly - 6, 10, 12, 'D');
+          pdf.setLineDashPattern([], 0);
+          lx += 16;
+        }
+        pdf.setTextColor(170, 180, 190);
+        pdf.text(label, lx, ly);
+        lx += pdf.getTextWidth(label) + 20;
+      };
+      
+      drawLegendItem('Camera', 'circle', [59, 130, 246]);
+      drawLegendItem('Sensor', 'circle', [245, 158, 11]);
+      drawLegendItem('Sign', 'circle', [34, 197, 94]);
+      drawLegendItem('Entry', 'bar', [34, 197, 94]);
+      drawLegendItem('Exit', 'bar', [239, 68, 68]);
+      drawLegendItem('Lane', 'bar', [65, 75, 95]);
+      drawLegendItem('Regular', 'spot', [30, 45, 70], [59, 130, 246]);
+      drawLegendItem('EV', 'spot', [20, 60, 35], [34, 197, 94]);
+      drawLegendItem('ADA', 'spot', [50, 30, 70], [168, 85, 247]);
 
-      // Legend items - Row 1
-      let legendX = margin + 15;
-      const legendItemY = legendY + 38;
-
-      // Camera
+      // === PAGE FOOTER ===
       pdf.setFillColor(59, 130, 246);
-      pdf.circle(legendX + 5, legendItemY, 5, 'F');
-      pdf.setTextColor(180, 180, 180);
-      pdf.text('Camera', legendX + 15, legendItemY + 3);
-      legendX += 70;
-
-      // Sensor
-      pdf.setFillColor(245, 158, 11);
-      pdf.circle(legendX + 5, legendItemY, 5, 'F');
-      pdf.text('Sensor', legendX + 15, legendItemY + 3);
-      legendX += 65;
-
-      // Sign
-      pdf.setFillColor(34, 197, 94);
-      pdf.circle(legendX + 5, legendItemY, 5, 'F');
-      pdf.text('Sign', legendX + 15, legendItemY + 3);
-      legendX += 55;
-
-      // Entry
-      pdf.setFillColor(34, 197, 94);
-      pdf.roundedRect(legendX, legendItemY - 4, 25, 8, 2, 2, 'F');
-      pdf.text('Entry', legendX + 30, legendItemY + 3);
-      legendX += 60;
-
-      // Exit
-      pdf.setFillColor(239, 68, 68);
-      pdf.roundedRect(legendX, legendItemY - 4, 25, 8, 2, 2, 'F');
-      pdf.text('Exit', legendX + 30, legendItemY + 3);
-      legendX += 55;
-
-      // Lane
-      pdf.setFillColor(80, 90, 110);
-      pdf.roundedRect(legendX, legendItemY - 4, 25, 8, 2, 2, 'F');
-      pdf.text('Lane', legendX + 30, legendItemY + 3);
-      legendX += 55;
-
-      // Row 2 - Spot types
-      legendX = margin + 15;
-      const legendItemY2 = legendY + 55;
-
-      // Regular Spot
-      pdf.setFillColor(40, 55, 80);
-      pdf.setDrawColor(59, 130, 246);
-      pdf.setLineDashPattern([3, 2], 0);
-      pdf.rect(legendX, legendItemY2 - 6, 12, 12, 'FD');
-      pdf.setLineDashPattern([], 0);
-      pdf.setTextColor(180, 180, 180);
-      pdf.text('Regular', legendX + 18, legendItemY2 + 3);
-      legendX += 65;
-
-      // EV Spot
-      pdf.setFillColor(34, 70, 50);
-      pdf.setDrawColor(34, 197, 94);
-      pdf.setLineDashPattern([3, 2], 0);
-      pdf.rect(legendX, legendItemY2 - 6, 12, 12, 'FD');
-      pdf.setLineDashPattern([], 0);
-      pdf.setTextColor(34, 197, 94);
-      pdf.text('⚡', legendX + 2, legendItemY2 + 3);
-      pdf.setTextColor(180, 180, 180);
-      pdf.text('EV', legendX + 18, legendItemY2 + 3);
-      legendX += 50;
-
-      // ADA Spot
-      pdf.setFillColor(60, 40, 80);
-      pdf.setDrawColor(168, 85, 247);
-      pdf.setLineDashPattern([3, 2], 0);
-      pdf.rect(legendX, legendItemY2 - 6, 12, 12, 'FD');
-      pdf.setLineDashPattern([], 0);
-      pdf.setTextColor(168, 85, 247);
-      pdf.text('♿', legendX + 2, legendItemY2 + 3);
-      pdf.setTextColor(180, 180, 180);
-      pdf.text('ADA', legendX + 18, legendItemY2 + 3);
-
-      // Page number
-      pdf.setTextColor(100, 100, 100);
+      pdf.roundedRect(pageWidth/2 - 30, pageHeight - 18, 60, 16, 8, 8, 'F');
+      pdf.setTextColor(255, 255, 255);
       pdf.setFontSize(9);
-      pdf.text(`Page ${levelIndex + 1} of ${garage.levels.length}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`${levelIndex + 1} / ${garage.levels.length}`, pageWidth/2, pageHeight - 7, { align: 'center' });
     }
 
     // Save the PDF
@@ -636,7 +849,20 @@ const EditorView = () => {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 18l6-6-6-6"/>
             </svg>
-            <span className="breadcrumb-item current">{level.name}</span>
+            <select 
+              className="level-dropdown"
+              value={selectedLevelId}
+              onChange={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setSelectedLevelId(e.target.value);
+                setSelectedDevice(null);
+              }}
+            >
+              {garage.levels.map(l => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
           </div>
         </div>
         <div className="header-right">
@@ -867,7 +1093,7 @@ const EditorView = () => {
                 <div className="form-header-compact">
                   <button className="back-link" onClick={() => {
                     setShowAddForm(false);
-                    setNewDevice({ type: '', name: '', ipAddress: '', port: '', direction: 'in', rotation: 0, flowDestination: 'garage-entry', viewImage: null, previewUrl: '', displayMapping: [], overrideState: 'auto', serialAddress: '', spotNumber: '', parkingType: 'regular', sensorImage: null });
+                    setNewDevice({ type: '', name: '', ipAddress: '', port: '', direction: 'in', rotation: 0, flowDestination: 'garage-entry', viewImage: null, previewUrl: '', displayMapping: [], overrideState: 'auto', serialAddress: '', spotNumber: '', parkingType: 'regular', sensorImage: null, externalUrl: '' });
                   }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M19 12H5M12 19l-7-7 7-7"/>
@@ -1025,6 +1251,23 @@ const EditorView = () => {
                         style={{ display: 'none' }}
                         onChange={handleNewDeviceImageUpload}
                       />
+                    </div>
+                  )}
+
+                  {/* External URL - for cameras and signs */}
+                  {(activeTab === 'cameras' || activeTab === 'signs') && (
+                    <div className="form-section">
+                      <label className="form-label-small">External URL (optional)</label>
+                      <div className="compact-input-row">
+                        <label>URL</label>
+                        <input
+                          type="text"
+                          placeholder="https://device-admin.local/..."
+                          value={newDevice.externalUrl}
+                          onChange={(e) => setNewDevice({ ...newDevice, externalUrl: e.target.value })}
+                        />
+                      </div>
+                      <p className="form-hint">Link to device admin panel or web interface</p>
                     </div>
                   )}
 
