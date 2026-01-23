@@ -229,6 +229,60 @@
   color: var(--joy-palette-primary-600);
 }
 
+/* Sidebar Weather Widget */
+.sidebar-weather-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar-weather-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, var(--joy-palette-primary-50) 0%, var(--joy-palette-background-surface) 100%);
+  border: 1px solid var(--joy-palette-primary-200);
+  border-radius: 12px;
+}
+
+.sidebar-weather-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.sidebar-weather-temp {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--joy-palette-neutral-900);
+}
+
+.sidebar-weather-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.sidebar-weather-detail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--joy-palette-background-surface);
+  border: 1px solid var(--joy-palette-neutral-200);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.sidebar-weather-detail-icon {
+  font-size: 16px;
+}
+
+.sidebar-weather-detail-value {
+  font-weight: 600;
+  color: var(--joy-palette-neutral-700);
+}
+
 .selector-main-content {
   flex: 1;
   overflow-y: auto;
@@ -2295,6 +2349,25 @@
 
 [data-joy-color-scheme="dark"] .contact-info .contact-label {
   color: var(--joy-palette-neutral-400);
+}
+
+/* Dark Mode - Sidebar Weather Widget */
+[data-joy-color-scheme="dark"] .sidebar-weather-main {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, var(--joy-palette-neutral-800) 100%);
+  border-color: var(--joy-palette-neutral-700);
+}
+
+[data-joy-color-scheme="dark"] .sidebar-weather-temp {
+  color: var(--joy-palette-neutral-100);
+}
+
+[data-joy-color-scheme="dark"] .sidebar-weather-detail {
+  background: var(--joy-palette-neutral-800);
+  border-color: var(--joy-palette-neutral-700);
+}
+
+[data-joy-color-scheme="dark"] .sidebar-weather-detail-value {
+  color: var(--joy-palette-neutral-300);
 }
 
 /* Dark Mode - Garage Address Link */

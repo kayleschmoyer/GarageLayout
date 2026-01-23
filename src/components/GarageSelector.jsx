@@ -11,6 +11,8 @@ const GarageSelector = () => {
   const [showContactModal, setShowContactModal] = useState(false);
   const [editingContact, setEditingContact] = useState(null);
   const [newContact, setNewContact] = useState({ title: '', phone: '', email: '', type: 'phone' });
+  const [weatherData, setWeatherData] = useState(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
 
   const addGarage = () => {
     if (!newGarage.name.trim()) return;
@@ -76,6 +78,68 @@ const GarageSelector = () => {
     setGarages(garages.filter(g => g.id !== garageId));
   };
 
+  // Get weather icon based on weather code
+  const getWeatherIcon = (code) => {
+    if (code === 0) return '☀️'; // Clear sky
+    if (code <= 3) return '⛅'; // Partly cloudy
+    if (code <= 48) return '🌫️'; // Fog
+    if (code <= 67) return '🌧️'; // Rain
+    if (code <= 77) return '🌨️'; // Snow
+    if (code <= 82) return '🌦️'; // Rain showers
+    if (code <= 86) return '🌨️'; // Snow showers
+    return '⛈️'; // Thunderstorm
+  };
+
+  // Fetch weather data based on first garage's address
+  useEffect(() => {
+    const fetchWeather = async () => {
+      const firstGarage = garages[0];
+      if (!firstGarage) return;
+
+      // Build full address
+      const fullAddress = [firstGarage.address, firstGarage.city, firstGarage.state, firstGarage.zip]
+        .filter(Boolean)
+        .join(', ');
+
+      if (!fullAddress) return;
+
+      setWeatherLoading(true);
+      try {
+        // First, geocode the address to get coordinates
+        const geocodeResponse = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(fullAddress)}&format=json&limit=1`
+        );
+        const geocodeData = await geocodeResponse.json();
+
+        if (geocodeData && geocodeData.length > 0) {
+          const { lat, lon } = geocodeData[0];
+
+          // Fetch weather data from Open-Meteo API (no API key required)
+          const weatherResponse = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`
+          );
+          const weatherInfo = await weatherResponse.json();
+
+          if (weatherInfo && weatherInfo.current) {
+            setWeatherData({
+              temperature: Math.round(weatherInfo.current.temperature_2m),
+              humidity: weatherInfo.current.relative_humidity_2m,
+              windSpeed: Math.round(weatherInfo.current.wind_speed_10m),
+              weatherCode: weatherInfo.current.weather_code,
+              lat,
+              lon
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching weather:', error);
+      } finally {
+        setWeatherLoading(false);
+      }
+    };
+
+    fetchWeather();
+  }, [garages]);
 
   // Calculate total device counts across all garages
   const getTotalDeviceCounts = () => {
@@ -137,6 +201,34 @@ const GarageSelector = () => {
       <div className="selector-layout">
         {/* Left Sidebar */}
         <aside className="selector-sidebar">
+          {/* Weather Section */}
+          {weatherData && (
+            <div className="sidebar-section">
+              <div className="sidebar-section-header">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+                </svg>
+                <span>Weather</span>
+              </div>
+              <div className="sidebar-weather-widget">
+                <div className="sidebar-weather-main">
+                  <span className="sidebar-weather-icon">{getWeatherIcon(weatherData.weatherCode)}</span>
+                  <span className="sidebar-weather-temp">{weatherData.temperature}°F</span>
+                </div>
+                <div className="sidebar-weather-details">
+                  <div className="sidebar-weather-detail">
+                    <span className="sidebar-weather-detail-icon">💧</span>
+                    <span className="sidebar-weather-detail-value">{weatherData.humidity}%</span>
+                  </div>
+                  <div className="sidebar-weather-detail">
+                    <span className="sidebar-weather-detail-icon">💨</span>
+                    <span className="sidebar-weather-detail-value">{weatherData.windSpeed} mph</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Device Stats */}
           <div className="sidebar-section">
             <div className="sidebar-section-header">
