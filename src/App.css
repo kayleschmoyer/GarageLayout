@@ -411,6 +411,185 @@
   color: var(--joy-palette-danger-600);
 }
 
+/* Garage Card Actions */
+.garage-card-actions {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.garage-card:hover .garage-card-actions {
+  opacity: 1;
+}
+
+.garage-card-edit,
+.garage-card-delete {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--joy-palette-background-surface);
+  border: 1px solid var(--joy-palette-neutral-200);
+  border-radius: 6px;
+  color: var(--joy-palette-neutral-600);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.garage-card-edit:hover {
+  background: var(--joy-palette-primary-50);
+  color: var(--joy-palette-primary-600);
+  border-color: var(--joy-palette-primary-300);
+}
+
+.garage-card-delete:hover {
+  background: var(--joy-palette-danger-50);
+  color: var(--joy-palette-danger-600);
+  border-color: var(--joy-palette-danger-300);
+}
+
+/* Address Link in Garage Card */
+.address-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--joy-palette-primary-600);
+  text-decoration: none;
+  margin: 0 0 8px;
+  transition: all 0.15s ease;
+}
+
+.address-link:hover {
+  color: var(--joy-palette-primary-700);
+  text-decoration: underline;
+}
+
+.address-link svg {
+  flex-shrink: 0;
+}
+
+/* Contacts Section */
+.add-contact-btn {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--joy-palette-primary-100);
+  border: none;
+  border-radius: 6px;
+  color: var(--joy-palette-primary-600);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.add-contact-btn:hover {
+  background: var(--joy-palette-primary-200);
+  transform: scale(1.05);
+}
+
+.contact-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.sidebar-contact-item:hover .contact-actions {
+  opacity: 1;
+}
+
+.contact-edit-btn,
+.contact-delete-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--joy-palette-neutral-500);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.contact-edit-btn:hover {
+  background: var(--joy-palette-primary-100);
+  color: var(--joy-palette-primary-600);
+}
+
+.contact-delete-btn:hover {
+  background: var(--joy-palette-danger-100);
+  color: var(--joy-palette-danger-600);
+}
+
+.empty-contacts {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.empty-contacts svg {
+  color: var(--joy-palette-neutral-300);
+  margin-bottom: 12px;
+}
+
+.empty-contacts p {
+  font-size: 13px;
+  color: var(--joy-palette-neutral-500);
+  margin: 0 0 16px;
+}
+
+.btn-add-first-contact {
+  padding: 8px 16px;
+  background: var(--joy-palette-primary-500);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-add-first-contact:hover {
+  background: var(--joy-palette-primary-600);
+  transform: translateY(-1px);
+}
+
+.view-all-contacts {
+  padding: 12px;
+  text-align: center;
+}
+
+.btn-view-all {
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--joy-palette-primary-600);
+  border: 1px solid var(--joy-palette-primary-300);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-view-all:hover {
+  background: var(--joy-palette-primary-50);
+  border-color: var(--joy-palette-primary-400);
+}
+
 /* Level Grid */
 .level-grid {
   display: grid;
@@ -2018,6 +2197,72 @@
   border-color: var(--joy-palette-neutral-200);
 }
 
+/* Dark Mode - Selector Sidebar */
+[data-joy-color-scheme="dark"] .selector-sidebar {
+  background: linear-gradient(135deg, var(--joy-palette-neutral-900) 0%, var(--joy-palette-neutral-800) 100%);
+  border-right-color: var(--joy-palette-neutral-700);
+}
+
+[data-joy-color-scheme="dark"] .sidebar-section {
+  border-bottom-color: var(--joy-palette-neutral-700);
+}
+
+[data-joy-color-scheme="dark"] .sidebar-section-header {
+  color: var(--joy-palette-neutral-100);
+}
+
+[data-joy-color-scheme="dark"] .sidebar-section-header svg {
+  color: var(--joy-palette-primary-400);
+}
+
+[data-joy-color-scheme="dark"] .device-stat-card {
+  background: linear-gradient(135deg, var(--joy-palette-neutral-800) 0%, rgba(59, 130, 246, 0.1) 100%);
+  border-color: var(--joy-palette-neutral-700);
+}
+
+[data-joy-color-scheme="dark"] .device-stat-card:hover {
+  border-color: var(--joy-palette-primary-600);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+[data-joy-color-scheme="dark"] .device-stat-value {
+  color: var(--joy-palette-neutral-100);
+}
+
+[data-joy-color-scheme="dark"] .device-stat-label {
+  color: var(--joy-palette-neutral-400);
+}
+
+[data-joy-color-scheme="dark"] .sidebar-contact-item {
+  background: var(--joy-palette-neutral-800);
+  border-color: var(--joy-palette-neutral-700);
+}
+
+[data-joy-color-scheme="dark"] .sidebar-contact-item:hover {
+  background: var(--joy-palette-neutral-700);
+  border-color: var(--joy-palette-neutral-600);
+}
+
+[data-joy-color-scheme="dark"] .sidebar-contact-item .contact-icon {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+[data-joy-color-scheme="dark"] .sidebar-contact-item .contact-icon.emergency {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+[data-joy-color-scheme="dark"] .sidebar-contact-item .contact-icon svg {
+  color: var(--joy-palette-primary-400);
+}
+
+[data-joy-color-scheme="dark"] .sidebar-contact-item .contact-icon.emergency svg {
+  color: var(--joy-palette-danger-400);
+}
+
+[data-joy-color-scheme="dark"] .contact-info .contact-label {
+  color: var(--joy-palette-neutral-400);
+}
+
 /* Dark Mode - Garage Address Link */
 [data-joy-color-scheme="dark"] .garage-address-link {
   background: var(--joy-palette-neutral-800);
@@ -2103,6 +2348,78 @@
 }
 
 [data-joy-color-scheme="dark"] .contact-link:hover {
+  color: var(--joy-palette-primary-300);
+}
+
+[data-joy-color-scheme="dark"] .add-contact-btn {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--joy-palette-primary-400);
+}
+
+[data-joy-color-scheme="dark"] .add-contact-btn:hover {
+  background: rgba(59, 130, 246, 0.3);
+}
+
+[data-joy-color-scheme="dark"] .contact-edit-btn:hover {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--joy-palette-primary-400);
+}
+
+[data-joy-color-scheme="dark"] .contact-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--joy-palette-danger-400);
+}
+
+[data-joy-color-scheme="dark"] .empty-contacts svg {
+  color: var(--joy-palette-neutral-700);
+}
+
+[data-joy-color-scheme="dark"] .empty-contacts p {
+  color: var(--joy-palette-neutral-400);
+}
+
+[data-joy-color-scheme="dark"] .btn-add-first-contact {
+  background: var(--joy-palette-primary-600);
+}
+
+[data-joy-color-scheme="dark"] .btn-add-first-contact:hover {
+  background: var(--joy-palette-primary-500);
+}
+
+[data-joy-color-scheme="dark"] .btn-view-all {
+  color: var(--joy-palette-primary-400);
+  border-color: var(--joy-palette-primary-700);
+}
+
+[data-joy-color-scheme="dark"] .btn-view-all:hover {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: var(--joy-palette-primary-600);
+}
+
+[data-joy-color-scheme="dark"] .garage-card-edit,
+[data-joy-color-scheme="dark"] .garage-card-delete {
+  background: var(--joy-palette-neutral-800);
+  border-color: var(--joy-palette-neutral-700);
+  color: var(--joy-palette-neutral-400);
+}
+
+[data-joy-color-scheme="dark"] .garage-card-edit:hover {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--joy-palette-primary-400);
+  border-color: var(--joy-palette-primary-700);
+}
+
+[data-joy-color-scheme="dark"] .garage-card-delete:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--joy-palette-danger-400);
+  border-color: var(--joy-palette-danger-700);
+}
+
+[data-joy-color-scheme="dark"] .address-link {
+  color: var(--joy-palette-primary-400);
+}
+
+[data-joy-color-scheme="dark"] .address-link:hover {
   color: var(--joy-palette-primary-300);
 }
 
