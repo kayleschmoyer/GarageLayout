@@ -122,6 +122,10 @@ function AppContent() {
       id: 1,
       name: 'Main Parking Garage',
       address: '123 Main St',
+      city: '',
+      state: '',
+      zip: '',
+      image: '',
       contacts: [
         { id: 1, title: 'Emergency', phone: '911', email: '', type: 'emergency' },
         { id: 2, title: 'Maintenance', phone: '(555) 123-4567', email: '', type: 'phone' },

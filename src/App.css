@@ -365,6 +365,40 @@
   color: var(--joy-palette-primary-700);
 }
 
+.garage-card-image {
+  width: 100%;
+  height: 160px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s ease;
+}
+
+.garage-card:hover .garage-card-image {
+  transform: scale(1.02);
+}
+
+.garage-card-image-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.garage-card-image-overlay svg {
+  color: white;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
 .garage-card-info h3 {
   font-size: 17px;
   font-weight: 600;
@@ -2190,7 +2224,7 @@
 }
 
 [data-joy-color-scheme="dark"] .garage-card-icon {
-  background: var(--joy-palette-primary-50);
+  background: rgba(59, 130, 246, 0.2);
 }
 
 [data-joy-color-scheme="dark"] .device-palette {

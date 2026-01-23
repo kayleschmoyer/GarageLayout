@@ -5,9 +5,7 @@ import { AppContext } from '../App';
 const GarageSelector = () => {
   const { garages, setGarages, selectGarage, mode, setMode } = useContext(AppContext);
   const [showModal, setShowModal] = useState(false);
-  const [newGarage, setNewGarage] = useState({ name: '', address: '', contacts: [] });
-  const [weatherData, setWeatherData] = useState(null);
-  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [newGarage, setNewGarage] = useState({ name: '', address: '', city: '', state: '', zip: '', image: '', contacts: [] });
   const [editingGarage, setEditingGarage] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
@@ -21,11 +19,15 @@ const GarageSelector = () => {
       id: newId,
       name: newGarage.name,
       address: newGarage.address,
+      city: newGarage.city,
+      state: newGarage.state,
+      zip: newGarage.zip,
+      image: newGarage.image,
       contacts: [],
       levels: []
     };
     setGarages([...garages, garage]);
-    setNewGarage({ name: '', address: '', contacts: [] });
+    setNewGarage({ name: '', address: '', city: '', state: '', zip: '', image: '', contacts: [] });
     setShowModal(false);
     selectGarage(newId);
   };
@@ -74,59 +76,6 @@ const GarageSelector = () => {
     setGarages(garages.filter(g => g.id !== garageId));
   };
 
-  // Fetch weather for the first garage with an address
-  useEffect(() => {
-    const fetchWeather = async () => {
-      const garageWithAddress = garages.find(g => g.address);
-      if (!garageWithAddress?.address) return;
-
-      setWeatherLoading(true);
-      try {
-        // Geocode the address
-        const geocodeResponse = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(garageWithAddress.address)}&format=json&limit=1`
-        );
-        const geocodeData = await geocodeResponse.json();
-
-        if (geocodeData && geocodeData.length > 0) {
-          const { lat, lon } = geocodeData[0];
-
-          // Fetch weather from Open-Meteo API
-          const weatherResponse = await fetch(
-            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`
-          );
-          const weatherInfo = await weatherResponse.json();
-
-          if (weatherInfo && weatherInfo.current) {
-            setWeatherData({
-              temperature: Math.round(weatherInfo.current.temperature_2m),
-              humidity: weatherInfo.current.relative_humidity_2m,
-              windSpeed: Math.round(weatherInfo.current.wind_speed_10m),
-              weatherCode: weatherInfo.current.weather_code,
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching weather:', error);
-      } finally {
-        setWeatherLoading(false);
-      }
-    };
-
-    fetchWeather();
-  }, [garages]);
-
-  // Get weather icon based on weather code
-  const getWeatherIcon = (code) => {
-    if (code === 0) return '☀️';
-    if (code <= 3) return '⛅';
-    if (code <= 48) return '🌫️';
-    if (code <= 67) return '🌧️';
-    if (code <= 77) return '🌨️';
-    if (code <= 82) return '🌦️';
-    if (code <= 86) return '🌨️';
-    return '⛈️';
-  };
 
   // Calculate total device counts across all garages
   const getTotalDeviceCounts = () => {
@@ -165,15 +114,6 @@ const GarageSelector = () => {
             <span>Garage Layout Editor</span>
           </div>
           <div className="header-right-controls">
-            {weatherData && (
-              <div className="weather-widget">
-                <span className="weather-icon">{getWeatherIcon(weatherData.weatherCode)}</span>
-                <span className="weather-temp">{weatherData.temperature}°F</span>
-                <span className="weather-details">
-                  💧 {weatherData.humidity}% · 💨 {weatherData.windSpeed} mph
-                </span>
-              </div>
-            )}
             <button
               className="icon-btn"
               onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}
@@ -372,73 +312,92 @@ const GarageSelector = () => {
           </div>
 
           <div className="garage-grid">
-            {garages.map(garage => (
-              <div
-                key={garage.id}
-                className="garage-card"
-                onClick={() => selectGarage(garage.id)}
-              >
-                <div className="garage-card-icon">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M3 21h18" />
-                    <path d="M5 21V7l7-4 7 4v14" />
-                    <path d="M9 21v-6h6v6" />
-                  </svg>
-                </div>
-                <div className="garage-card-info">
-                  <h3>{garage.name}</h3>
-                  {garage.address && (
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(garage.address)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="address-link"
-                      onClick={(e) => e.stopPropagation()}
-                      title="Open in Google Maps"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                        <circle cx="12" cy="10" r="3"/>
+            {garages.map(garage => {
+              const fullAddress = [garage.address, garage.city, garage.state, garage.zip]
+                .filter(Boolean)
+                .join(', ');
+              const mapsQuery = fullAddress || garage.address;
+
+              return (
+                <div
+                  key={garage.id}
+                  className="garage-card"
+                  onClick={() => selectGarage(garage.id)}
+                >
+                  {garage.image ? (
+                    <div className="garage-card-image" style={{backgroundImage: `url(${garage.image})`}}>
+                      <div className="garage-card-image-overlay">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <path d="M3 21h18" />
+                          <path d="M5 21V7l7-4 7 4v14" />
+                          <path d="M9 21v-6h6v6" />
+                        </svg>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="garage-card-icon">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path d="M3 21h18" />
+                        <path d="M5 21V7l7-4 7 4v14" />
+                        <path d="M9 21v-6h6v6" />
                       </svg>
-                      {garage.address}
-                    </a>
+                    </div>
                   )}
-                  <p className="stats">
-                    {garage.levels.length} level{garage.levels.length !== 1 ? 's' : ''}
-                    {garage.levels.length > 0 && (
-                      <span> · {garage.levels.reduce((sum, l) => sum + (l.totalSpots || 0), 0)} spots</span>
+                  <div className="garage-card-info">
+                    <h3>{garage.name}</h3>
+                    {fullAddress && (
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="address-link"
+                        onClick={(e) => e.stopPropagation()}
+                        title="Open in Google Maps"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                          <circle cx="12" cy="10" r="3"/>
+                        </svg>
+                        {fullAddress}
+                      </a>
                     )}
-                  </p>
-                </div>
-                <div className="garage-card-actions">
-                  <button
-                    className="garage-card-edit"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingGarage(garage);
-                      setShowEditModal(true);
-                    }}
-                    title="Edit garage info"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                  </button>
-                  {garages.length > 1 && (
+                    <p className="stats">
+                      {garage.levels.length} level{garage.levels.length !== 1 ? 's' : ''}
+                      {garage.levels.length > 0 && (
+                        <span> · {garage.levels.reduce((sum, l) => sum + (l.totalSpots || 0), 0)} spots</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="garage-card-actions">
                     <button
-                      className="garage-card-delete"
-                      onClick={(e) => deleteGarage(e, garage.id)}
-                      title="Delete garage"
+                      className="garage-card-edit"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingGarage(garage);
+                        setShowEditModal(true);
+                      }}
+                      title="Edit garage info"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                       </svg>
                     </button>
-                  )}
+                    {garages.length > 1 && (
+                      <button
+                        className="garage-card-delete"
+                        onClick={(e) => deleteGarage(e, garage.id)}
+                        title="Delete garage"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {/* Add New Card */}
             <div
@@ -456,7 +415,7 @@ const GarageSelector = () => {
 
       {/* Add Garage Modal */}
       <Modal open={showModal} onClose={() => setShowModal(false)}>
-        <ModalDialog sx={{ borderRadius: '12px', p: 3, maxWidth: 400, bgcolor: 'background.surface' }}>
+        <ModalDialog sx={{ borderRadius: '12px', p: 3, maxWidth: 500, bgcolor: 'background.surface' }}>
           <h3 style={{ margin: '0 0 4px', fontSize: '18px', fontWeight: 600 }}>New Garage</h3>
           <p style={{ margin: '0 0 20px', fontSize: '14px', opacity: 0.6 }}>
             Enter the details for your new garage
@@ -472,12 +431,48 @@ const GarageSelector = () => {
             />
           </div>
 
-          <div style={{ marginBottom: 24 }}>
-            <label className="form-label">Address (optional)</label>
+          <div style={{ marginBottom: 16 }}>
+            <label className="form-label">Street Address (optional)</label>
             <Input
               placeholder="e.g., 123 Main Street"
               value={newGarage.address}
               onChange={(e) => setNewGarage({ ...newGarage, address: e.target.value })}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+            <div>
+              <label className="form-label">City</label>
+              <Input
+                placeholder="City"
+                value={newGarage.city}
+                onChange={(e) => setNewGarage({ ...newGarage, city: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="form-label">State</label>
+              <Input
+                placeholder="State"
+                value={newGarage.state}
+                onChange={(e) => setNewGarage({ ...newGarage, state: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="form-label">ZIP</label>
+              <Input
+                placeholder="ZIP"
+                value={newGarage.zip}
+                onChange={(e) => setNewGarage({ ...newGarage, zip: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 24 }}>
+            <label className="form-label">Garage Image URL (optional)</label>
+            <Input
+              placeholder="e.g., https://example.com/garage.jpg"
+              value={newGarage.image}
+              onChange={(e) => setNewGarage({ ...newGarage, image: e.target.value })}
             />
           </div>
 
@@ -494,7 +489,7 @@ const GarageSelector = () => {
 
       {/* Edit Garage Modal */}
       <Modal open={showEditModal} onClose={() => setShowEditModal(false)}>
-        <ModalDialog sx={{ borderRadius: '12px', p: 3, maxWidth: 400, bgcolor: 'background.surface' }}>
+        <ModalDialog sx={{ borderRadius: '12px', p: 3, maxWidth: 500, bgcolor: 'background.surface' }}>
           <h3 style={{ margin: '0 0 4px', fontSize: '18px', fontWeight: 600 }}>Edit Garage</h3>
           <p style={{ margin: '0 0 20px', fontSize: '14px', opacity: 0.6 }}>
             Update garage information
@@ -510,12 +505,48 @@ const GarageSelector = () => {
             />
           </div>
 
-          <div style={{ marginBottom: 24 }}>
-            <label className="form-label">Address</label>
+          <div style={{ marginBottom: 16 }}>
+            <label className="form-label">Street Address</label>
             <Input
               placeholder="e.g., 123 Main Street"
               value={editingGarage?.address || ''}
               onChange={(e) => setEditingGarage({ ...editingGarage, address: e.target.value })}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+            <div>
+              <label className="form-label">City</label>
+              <Input
+                placeholder="City"
+                value={editingGarage?.city || ''}
+                onChange={(e) => setEditingGarage({ ...editingGarage, city: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="form-label">State</label>
+              <Input
+                placeholder="State"
+                value={editingGarage?.state || ''}
+                onChange={(e) => setEditingGarage({ ...editingGarage, state: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="form-label">ZIP</label>
+              <Input
+                placeholder="ZIP"
+                value={editingGarage?.zip || ''}
+                onChange={(e) => setEditingGarage({ ...editingGarage, zip: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 24 }}>
+            <label className="form-label">Garage Image URL</label>
+            <Input
+              placeholder="e.g., https://example.com/garage.jpg"
+              value={editingGarage?.image || ''}
+              onChange={(e) => setEditingGarage({ ...editingGarage, image: e.target.value })}
             />
           </div>
 
