@@ -115,21 +115,21 @@ const enterpriseTheme = extendTheme({
 
 function AppContent() {
   const { mode, setMode } = useColorScheme();
-  
+
   // App state
   const [garages, setGarages] = useState([
     {
       id: 1,
       name: 'Main Parking Garage',
-      address: '123 Main St',
-      city: '',
-      state: '',
-      zip: '',
+      address: '123 N Main St',
+      city: 'Allentown',
+      state: 'PA',
+      zip: '18102',
       image: '',
       contacts: [
-        { id: 1, title: 'Emergency', phone: '911', email: '', type: 'emergency' },
-        { id: 2, title: 'Maintenance', phone: '(555) 123-4567', email: '', type: 'phone' },
-        { id: 3, title: 'Support Email', phone: '', email: 'support@garage.com', type: 'email' }
+        { id: 1, name: 'Security Desk', title: 'Emergency', phone: '(555) 555-5555', email: '', type: 'emergency' },
+        { id: 2, name: 'John Doe', title: 'Maintenance Lead', phone: '(555) 555-5555', email: '', type: 'phone' },
+        { id: 3, name: 'IT Support', title: 'Help Desk', phone: '', email: 'support@garage.com', type: 'email' }
       ],
       levels: [
         { id: 1, name: 'Level 1', totalSpots: 150, evSpots: 10, handicapSpots: 8, bgImage: null, devices: [] },
@@ -137,7 +137,7 @@ function AppContent() {
       ]
     }
   ]);
-  
+
   // Navigation state
   const [currentView, setCurrentView] = useState('garages'); // 'garages', 'levels', 'editor'
   const [selectedGarage, setSelectedGarage] = useState(null);
@@ -155,7 +155,7 @@ function AppContent() {
       window.history.pushState({}, '', '/');
       return;
     }
-    
+
     const level = garage.levels.find(l => l.id === levelId);
     if (level) {
       window.history.pushState({}, '', `/${toSlug(garage.name)}/${toSlug(level.name)}`);
@@ -168,17 +168,17 @@ function AppContent() {
   useEffect(() => {
     // Only parse URL on initial load, not on every garages change
     if (!initialLoadRef.current) return;
-    
+
     const parseUrl = () => {
       const path = window.location.pathname;
       const parts = path.split('/').filter(Boolean);
-      
+
       if (parts.length >= 1) {
         const garageSlug = parts[0];
         const garage = garages.find(g => toSlug(g.name) === garageSlug);
         if (garage) {
           setSelectedGarage(garage.id);
-          
+
           if (parts.length >= 2) {
             const levelSlug = parts[1];
             const level = garage.levels.find(l => toSlug(l.name) === levelSlug);
@@ -195,14 +195,14 @@ function AppContent() {
       }
       initialLoadRef.current = false;
     };
-    
+
     parseUrl();
-    
+
     // Handle browser back/forward
     const handlePopState = () => {
       const path = window.location.pathname;
       const parts = path.split('/').filter(Boolean);
-      
+
       if (parts.length === 0) {
         setSelectedGarage(null);
         setSelectedLevel(null);
@@ -212,7 +212,7 @@ function AppContent() {
         const garage = garages.find(g => toSlug(g.name) === garageSlug);
         if (garage) {
           setSelectedGarage(garage.id);
-          
+
           if (parts.length >= 2) {
             const levelSlug = parts[1];
             const level = garage.levels.find(l => toSlug(l.name) === levelSlug);
@@ -230,7 +230,7 @@ function AppContent() {
         }
       }
     };
-    
+
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [garages]);
@@ -242,7 +242,7 @@ function AppContent() {
 
   // Update levels for current garage
   const setLevels = (newLevels) => {
-    setGarages(garages.map(g => 
+    setGarages(garages.map(g =>
       g.id === selectedGarage ? { ...g, levels: newLevels } : g
     ));
   };
@@ -283,14 +283,14 @@ function AppContent() {
   };
 
   return (
-    <AppContext.Provider value={{ 
+    <AppContext.Provider value={{
       garages, setGarages,
-      selectedGarageId: selectedGarage, 
-      setSelectedGarageId: setSelectedGarage, 
+      selectedGarageId: selectedGarage,
+      setSelectedGarageId: setSelectedGarage,
       selectGarage,
-      levels, setLevels, 
-      selectedLevelId: selectedLevel, 
-      setSelectedLevelId: setSelectedLevelWithUrl, 
+      levels, setLevels,
+      selectedLevelId: selectedLevel,
+      setSelectedLevelId: setSelectedLevelWithUrl,
       selectLevel,
       currentLevel,
       selectedDevice, setSelectedDevice,

@@ -5,17 +5,17 @@ import InspectorPanel from './InspectorPanel';
 import { jsPDF } from 'jspdf';
 
 const EditorView = () => {
-  const { 
-    garages, 
+  const {
+    garages,
     setGarages,
-    selectedGarageId, 
+    selectedGarageId,
     selectedLevelId,
     setSelectedLevelId,
     selectedDevice,
     setSelectedDevice,
-    goBack, 
-    mode, 
-    setMode 
+    goBack,
+    mode,
+    setMode
   } = useContext(AppContext);
 
   const [activeTab, setActiveTab] = useState('cameras');
@@ -23,10 +23,10 @@ const EditorView = () => {
   const [showLevelSettings, setShowLevelSettings] = useState(false);
   const [weatherData, setWeatherData] = useState(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
-  const [newDevice, setNewDevice] = useState({ 
-    type: '', 
-    name: '', 
-    ipAddress: '', 
+  const [newDevice, setNewDevice] = useState({
+    type: '',
+    name: '',
+    ipAddress: '',
     port: '',
     direction: 'in',
     rotation: 0,
@@ -161,7 +161,7 @@ const EditorView = () => {
 
   const addDevice = () => {
     if (!newDevice.type || !newDevice.name) return;
-    
+
     const updatedGarages = garages.map(g => {
       if (g.id === selectedGarageId) {
         return {
@@ -230,7 +230,7 @@ const EditorView = () => {
 
     for (let levelIndex = 0; levelIndex < garage.levels.length; levelIndex++) {
       const currentLevel = garage.levels[levelIndex];
-      
+
       if (levelIndex > 0) {
         pdf.addPage();
       }
@@ -239,7 +239,7 @@ const EditorView = () => {
       // Main dark background
       pdf.setFillColor(18, 20, 28);
       pdf.rect(0, 0, pageWidth, pageHeight, 'F');
-      
+
       // Subtle vignette overlay at edges
       pdf.setFillColor(12, 14, 20);
       pdf.rect(0, 0, pageWidth, 8, 'F');
@@ -247,25 +247,25 @@ const EditorView = () => {
 
       // === HEADER - Modern sleek design ===
       const headerHeight = 55;
-      
+
       // Header background with subtle gradient
       pdf.setFillColor(28, 32, 42);
       pdf.rect(0, 0, pageWidth, headerHeight, 'F');
-      
+
       // Accent line under header
       pdf.setFillColor(59, 130, 246);
       pdf.rect(0, headerHeight - 2, pageWidth, 2, 'F');
-      
+
       // Logo/Brand area indicator
       pdf.setFillColor(59, 130, 246);
       pdf.roundedRect(20, 12, 4, 30, 2, 2, 'F');
-      
+
       // Garage name - Large bold
       pdf.setTextColor(255, 255, 255);
       pdf.setFontSize(22);
       pdf.setFont('helvetica', 'bold');
       pdf.text(garage.name, 34, 35);
-      
+
       // Level badge
       const levelText = currentLevel.name;
       pdf.setFontSize(11);
@@ -274,7 +274,7 @@ const EditorView = () => {
       pdf.roundedRect(pageWidth - levelTextWidth - 20, 15, levelTextWidth, 26, 13, 13, 'F');
       pdf.setTextColor(255, 255, 255);
       pdf.setFont('helvetica', 'bold');
-      pdf.text(levelText, pageWidth - levelTextWidth/2 - 20, 33, { align: 'center' });
+      pdf.text(levelText, pageWidth - levelTextWidth / 2 - 20, 33, { align: 'center' });
 
       // === STATS BAR - Clean pill design ===
       const statsY = headerHeight + 12;
@@ -282,10 +282,10 @@ const EditorView = () => {
       const cameraCount = levelDevices.filter(d => d.type.startsWith('cam-')).length;
       const sensorCount = levelDevices.filter(d => d.type.startsWith('sensor-')).length;
       const signCount = levelDevices.filter(d => d.type.startsWith('sign-')).length;
-      
+
       pdf.setFontSize(9);
       pdf.setFont('helvetica', 'normal');
-      
+
       let statsX = 20;
       const drawStatPill = (label, value, color) => {
         const text = `${label}: ${value}`;
@@ -296,24 +296,24 @@ const EditorView = () => {
         pdf.text(text, statsX + 8, statsY + 14);
         statsX += textW + 8;
       };
-      
+
       drawStatPill('Spots', currentLevel.totalSpots || 0, [55, 65, 81]);
       drawStatPill('EV', currentLevel.evSpots || 0, [22, 101, 52]);
       drawStatPill('ADA', currentLevel.adaSpots || 0, [88, 28, 135]);
       drawStatPill('Cameras', cameraCount, [30, 64, 175]);
       drawStatPill('Sensors', sensorCount, [161, 98, 7]);
       drawStatPill('Signs', signCount, [21, 128, 61]);
-      
+
       // Date/time on right
       pdf.setFillColor(40, 44, 52);
-      const dateText = new Date().toLocaleDateString('en-US', { 
+      const dateText = new Date().toLocaleDateString('en-US', {
         weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
         hour: '2-digit', minute: '2-digit'
       });
       const dateW = pdf.getTextWidth(dateText) + 16;
       pdf.roundedRect(pageWidth - dateW - 20, statsY, dateW, 20, 10, 10, 'F');
       pdf.setTextColor(160, 170, 180);
-      pdf.text(dateText, pageWidth - dateW/2 - 20, statsY + 14, { align: 'center' });
+      pdf.text(dateText, pageWidth - dateW / 2 - 20, statsY + 14, { align: 'center' });
 
       // === MAIN CANVAS AREA ===
       const canvasMargin = 20;
@@ -331,15 +331,15 @@ const EditorView = () => {
       // Inner canvas area
       const innerPad = 8;
       pdf.setFillColor(16, 18, 26);
-      pdf.roundedRect(canvasMargin + innerPad, canvasY + innerPad, 
-                      canvasWidth - innerPad * 2, canvasHeight - innerPad * 2, 4, 4, 'F');
+      pdf.roundedRect(canvasMargin + innerPad, canvasY + innerPad,
+        canvasWidth - innerPad * 2, canvasHeight - innerPad * 2, 4, 4, 'F');
 
       // Background image if exists
       if (currentLevel.bgImage) {
         try {
-          pdf.addImage(currentLevel.bgImage, 'JPEG', 
-                       canvasMargin + innerPad, canvasY + innerPad, 
-                       canvasWidth - innerPad * 2, canvasHeight - innerPad * 2);
+          pdf.addImage(currentLevel.bgImage, 'JPEG',
+            canvasMargin + innerPad, canvasY + innerPad,
+            canvasWidth - innerPad * 2, canvasHeight - innerPad * 2);
         } catch (e) { /* Continue on error */ }
       }
 
@@ -347,14 +347,14 @@ const EditorView = () => {
       const layoutElements = currentLevel.layoutElements || [];
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       let hasContent = false;
-      
+
       // Get element bounds accounting for rotation
       const getElementBounds = (el) => {
         const rotation = el.rotation || 0;
         const isRotated90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
         let w, h;
-        
-        switch(el.type) {
+
+        switch (el.type) {
           case 'lane': {
             const isVertical = el.direction === 'up' || el.direction === 'down';
             w = isVertical ? (el.width || 60) : (el.length || 200);
@@ -391,16 +391,16 @@ const EditorView = () => {
         }
         return { w, h };
       };
-      
+
       layoutElements.forEach(el => {
         hasContent = true;
         const { w, h } = getElementBounds(el);
-        minX = Math.min(minX, el.x - w/2);
-        minY = Math.min(minY, el.y - h/2);
-        maxX = Math.max(maxX, el.x + w/2);
-        maxY = Math.max(maxY, el.y + h/2);
+        minX = Math.min(minX, el.x - w / 2);
+        minY = Math.min(minY, el.y - h / 2);
+        maxX = Math.max(maxX, el.x + w / 2);
+        maxY = Math.max(maxY, el.y + h / 2);
       });
-      
+
       levelDevices.forEach(d => {
         hasContent = true;
         minX = Math.min(minX, d.x - 40);
@@ -408,18 +408,18 @@ const EditorView = () => {
         maxX = Math.max(maxX, d.x + 40);
         maxY = Math.max(maxY, d.y + 40);
       });
-      
+
       if (!hasContent) { minX = 0; minY = 0; maxX = 800; maxY = 600; }
-      
+
       const padding = 30;
       minX -= padding; minY -= padding; maxX += padding; maxY += padding;
-      
+
       const contentW = maxX - minX;
       const contentH = maxY - minY;
       const drawableW = canvasWidth - innerPad * 2 - 20;
       const drawableH = canvasHeight - innerPad * 2 - 20;
       const scale = Math.min(drawableW / contentW, drawableH / contentH);
-      
+
       const scaledW = contentW * scale;
       const scaledH = contentH * scale;
       const offsetX = canvasMargin + innerPad + 10 + (drawableW - scaledW) / 2 - minX * scale;
@@ -439,34 +439,34 @@ const EditorView = () => {
         const isVertical = el.direction === 'up' || el.direction === 'down';
         const laneW = (isVertical ? (el.width || 60) : (el.length || 120)) * scale;
         const laneH = (isVertical ? (el.length || 120) : (el.width || 60)) * scale;
-        
+
         // Shadow
         pdf.setFillColor(10, 12, 18);
-        pdf.roundedRect(x - laneW/2 + 2, y - laneH/2 + 2, laneW, laneH, 4, 4, 'F');
-        
+        pdf.roundedRect(x - laneW / 2 + 2, y - laneH / 2 + 2, laneW, laneH, 4, 4, 'F');
+
         // Lane body
         pdf.setFillColor(65, 75, 95);
-        pdf.roundedRect(x - laneW/2, y - laneH/2, laneW, laneH, 4, 4, 'F');
-        
+        pdf.roundedRect(x - laneW / 2, y - laneH / 2, laneW, laneH, 4, 4, 'F');
+
         // Center dashed line
         pdf.setDrawColor(120, 130, 150);
         pdf.setLineWidth(Math.max(1, 1.5 * scale));
         pdf.setLineDashPattern([6 * scale, 4 * scale], 0);
         if (isVertical) {
-          pdf.line(x, y - laneH/2 + 8, x, y + laneH/2 - 8);
+          pdf.line(x, y - laneH / 2 + 8, x, y + laneH / 2 - 8);
         } else {
-          pdf.line(x - laneW/2 + 8, y, x + laneW/2 - 8, y);
+          pdf.line(x - laneW / 2 + 8, y, x + laneW / 2 - 8, y);
         }
         pdf.setLineDashPattern([], 0);
-        
+
         // Direction arrow
         pdf.setFillColor(140, 150, 170);
         const arrSize = Math.max(4, 6 * scale);
         const arrOffset = 12 * scale;
-        if (el.direction === 'right') drawTriangle(pdf, x + laneW/2 - arrOffset, y, arrSize, 90);
-        else if (el.direction === 'left') drawTriangle(pdf, x - laneW/2 + arrOffset, y, arrSize, -90);
-        else if (el.direction === 'up') drawTriangle(pdf, x, y - laneH/2 + arrOffset, arrSize, 0);
-        else if (el.direction === 'down') drawTriangle(pdf, x, y + laneH/2 - arrOffset, arrSize, 180);
+        if (el.direction === 'right') drawTriangle(pdf, x + laneW / 2 - arrOffset, y, arrSize, 90);
+        else if (el.direction === 'left') drawTriangle(pdf, x - laneW / 2 + arrOffset, y, arrSize, -90);
+        else if (el.direction === 'up') drawTriangle(pdf, x, y - laneH / 2 + arrOffset, arrSize, 0);
+        else if (el.direction === 'down') drawTriangle(pdf, x, y + laneH / 2 - arrOffset, arrSize, 180);
       });
 
       // --- CURVES (U-turn connectors) ---
@@ -552,14 +552,14 @@ const EditorView = () => {
         const y = offsetY + el.y * scale;
         const rotation = el.rotation || 0;
         const isRotated90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
-        
+
         // Swap width/height if rotated 90 degrees
         let spotW = (el.width || 40) * scale;
         let spotH = (el.height || 60) * scale;
         if (isRotated90) {
           [spotW, spotH] = [spotH, spotW];
         }
-        
+
         let fillColor, strokeColor, iconColor;
         if (el.spotType === 'ev') {
           fillColor = [20, 60, 35]; strokeColor = [34, 197, 94]; iconColor = [74, 222, 128];
@@ -568,33 +568,33 @@ const EditorView = () => {
         } else {
           fillColor = [30, 45, 70]; strokeColor = [59, 130, 246]; iconColor = [96, 165, 250];
         }
-        
+
         // Spot fill
         pdf.setFillColor(...fillColor);
-        pdf.rect(x - spotW/2, y - spotH/2, spotW, spotH, 'F');
-        
+        pdf.rect(x - spotW / 2, y - spotH / 2, spotW, spotH, 'F');
+
         // Dashed border
         pdf.setDrawColor(...strokeColor);
         pdf.setLineWidth(Math.max(0.75, 1.2 * scale));
         pdf.setLineDashPattern([3 * scale, 2 * scale], 0);
-        pdf.rect(x - spotW/2, y - spotH/2, spotW, spotH, 'D');
+        pdf.rect(x - spotW / 2, y - spotH / 2, spotW, spotH, 'D');
         pdf.setLineDashPattern([], 0);
-        
+
         // Icons/Numbers
         const fontSize = Math.max(6, Math.min(9, 8 * scale));
         pdf.setFontSize(fontSize);
         if (el.spotType === 'ev') {
           pdf.setTextColor(...iconColor);
           pdf.setFont('helvetica', 'bold');
-          pdf.text('EV', x, y + fontSize/3, { align: 'center' });
+          pdf.text('EV', x, y + fontSize / 3, { align: 'center' });
         } else if (el.spotType === 'ada') {
           pdf.setTextColor(...iconColor);
           pdf.setFont('helvetica', 'bold');
-          pdf.text('ADA', x, y + fontSize/3, { align: 'center' });
+          pdf.text('ADA', x, y + fontSize / 3, { align: 'center' });
         } else if (el.spotNumber) {
           pdf.setTextColor(140, 160, 190);
           pdf.setFont('helvetica', 'normal');
-          pdf.text(el.spotNumber, x, y + fontSize/3, { align: 'center' });
+          pdf.text(el.spotNumber, x, y + fontSize / 3, { align: 'center' });
         }
       });
 
@@ -605,30 +605,30 @@ const EditorView = () => {
         const rotation = el.rotation || 0;
         const isRotated90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
         const isEntry = el.direction === 'in';
-        
+
         let entW = (el.width || 80) * scale;
         let entH = 16 * scale;
         if (isRotated90) {
           [entW, entH] = [entH, entW];
         }
-        
+
         const color = isEntry ? [34, 197, 94] : [239, 68, 68];
         const darkColor = isEntry ? [22, 101, 52] : [153, 27, 27];
-        
+
         // Shadow/glow
         pdf.setFillColor(...darkColor);
-        pdf.roundedRect(x - entW/2, y - entH/2, entW, entH, 4, 4, 'F');
-        
+        pdf.roundedRect(x - entW / 2, y - entH / 2, entW, entH, 4, 4, 'F');
+
         // Main bar
         pdf.setFillColor(...color);
-        pdf.roundedRect(x - entW/2 + 2, y - entH/2 + 2, entW - 4, entH - 4, 3, 3, 'F');
-        
+        pdf.roundedRect(x - entW / 2 + 2, y - entH / 2 + 2, entW - 4, entH - 4, 3, 3, 'F');
+
         // Arrow line
         const arrowLen = (isRotated90 ? entH : entW) * 0.35;
         pdf.setDrawColor(...color);
         pdf.setLineWidth(Math.max(1.5, 2 * scale));
         pdf.setLineDashPattern([4 * scale, 3 * scale], 0);
-        
+
         if (isRotated90) {
           // Vertical arrow
           if (isEntry) {
@@ -645,7 +645,7 @@ const EditorView = () => {
           }
         }
         pdf.setLineDashPattern([], 0);
-        
+
         // Arrow head direction based on rotation
         pdf.setFillColor(...color);
         let arrowAngle;
@@ -656,7 +656,7 @@ const EditorView = () => {
           arrowAngle = isEntry ? 90 : -90;
           drawTriangle(pdf, isEntry ? x + arrowLen : x - arrowLen, y, 5 * scale, arrowAngle);
         }
-        
+
         // Label
         pdf.setTextColor(255, 255, 255);
         pdf.setFontSize(Math.max(7, 9 * scale));
@@ -670,31 +670,31 @@ const EditorView = () => {
         const y = offsetY + el.y * scale;
         const rotation = el.rotation || 0;
         const isRotated90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
-        
+
         let rampW = (el.width || 60) * scale;
         let rampH = (el.length || 100) * scale;
         if (isRotated90) {
           [rampW, rampH] = [rampH, rampW];
         }
-        
+
         pdf.setFillColor(80, 50, 20);
-        pdf.roundedRect(x - rampW/2, y - rampH/2, rampW, rampH, 4, 4, 'F');
-        
+        pdf.roundedRect(x - rampW / 2, y - rampH / 2, rampW, rampH, 4, 4, 'F');
+
         // Striped pattern - based on orientation
         pdf.setDrawColor(120, 80, 40);
         pdf.setLineWidth(1);
         if (isRotated90) {
           // Vertical stripes for horizontal ramp
           for (let i = 0; i < rampW; i += 8 * scale) {
-            pdf.line(x - rampW/2 + i, y - rampH/2 + 4, x - rampW/2 + i, y + rampH/2 - 4);
+            pdf.line(x - rampW / 2 + i, y - rampH / 2 + 4, x - rampW / 2 + i, y + rampH / 2 - 4);
           }
         } else {
           // Horizontal stripes for vertical ramp
           for (let i = 0; i < rampH; i += 8 * scale) {
-            pdf.line(x - rampW/2 + 4, y - rampH/2 + i, x + rampW/2 - 4, y - rampH/2 + i);
+            pdf.line(x - rampW / 2 + 4, y - rampH / 2 + i, x + rampW / 2 - 4, y - rampH / 2 + i);
           }
         }
-        
+
         pdf.setTextColor(251, 191, 36);
         pdf.setFontSize(Math.max(7, 9 * scale));
         pdf.setFont('helvetica', 'bold');
@@ -712,12 +712,12 @@ const EditorView = () => {
           const coneR = 50 * scale;
           const rot = ((device.rotation || 0) - 90) * Math.PI / 180;
           const coneAngle = 35 * Math.PI / 180;
-          
+
           const x1 = x + Math.cos(rot - coneAngle) * coneR;
           const y1 = y + Math.sin(rot - coneAngle) * coneR;
           const x2 = x + Math.cos(rot + coneAngle) * coneR;
           const y2 = y + Math.sin(rot + coneAngle) * coneR;
-          
+
           pdf.setFillColor(59, 130, 246);
           pdf.setGState(new pdf.GState({ opacity: 0.2 }));
           pdf.triangle(x, y, x1, y1, x2, y2, 'F');
@@ -729,19 +729,19 @@ const EditorView = () => {
         if (device.type.startsWith('cam-')) deviceColor = [59, 130, 246];
         else if (device.type.startsWith('sensor-')) deviceColor = [245, 158, 11];
         else deviceColor = [34, 197, 94];
-        
+
         // Outer glow
         pdf.setFillColor(deviceColor[0] * 0.3, deviceColor[1] * 0.3, deviceColor[2] * 0.3);
         pdf.circle(x, y, r + 3, 'F');
-        
+
         // Main circle
         pdf.setFillColor(...deviceColor);
         pdf.circle(x, y, r, 'F');
-        
+
         // Inner highlight
         pdf.setFillColor(Math.min(255, deviceColor[0] + 60), Math.min(255, deviceColor[1] + 60), Math.min(255, deviceColor[2] + 60));
         pdf.circle(x - r * 0.2, y - r * 0.2, r * 0.35, 'F');
-        
+
         // White border
         pdf.setDrawColor(255, 255, 255);
         pdf.setLineWidth(1.5);
@@ -756,7 +756,7 @@ const EditorView = () => {
 
       // === LEGEND BAR ===
       const legendY = pageHeight - legendHeight - 12;
-      
+
       // Legend container
       pdf.setFillColor(28, 32, 42);
       pdf.setDrawColor(45, 50, 60);
@@ -765,10 +765,10 @@ const EditorView = () => {
 
       pdf.setFontSize(8);
       pdf.setFont('helvetica', 'normal');
-      
+
       let lx = canvasMargin + 20;
-      const ly = legendY + legendHeight/2 + 3;
-      
+      const ly = legendY + legendHeight / 2 + 3;
+
       const drawLegendItem = (label, type, color, secondary) => {
         if (type === 'circle') {
           pdf.setFillColor(...color);
@@ -794,7 +794,7 @@ const EditorView = () => {
         pdf.text(label, lx, ly);
         lx += pdf.getTextWidth(label) + 20;
       };
-      
+
       drawLegendItem('Camera', 'circle', [59, 130, 246]);
       drawLegendItem('Sensor', 'circle', [245, 158, 11]);
       drawLegendItem('Sign', 'circle', [34, 197, 94]);
@@ -807,11 +807,11 @@ const EditorView = () => {
 
       // === PAGE FOOTER ===
       pdf.setFillColor(59, 130, 246);
-      pdf.roundedRect(pageWidth/2 - 30, pageHeight - 18, 60, 16, 8, 8, 'F');
+      pdf.roundedRect(pageWidth / 2 - 30, pageHeight - 18, 60, 16, 8, 8, 'F');
       pdf.setTextColor(255, 255, 255);
       pdf.setFontSize(9);
       pdf.setFont('helvetica', 'bold');
-      pdf.text(`${levelIndex + 1} / ${garage.levels.length}`, pageWidth/2, pageHeight - 7, { align: 'center' });
+      pdf.text(`${levelIndex + 1} / ${garage.levels.length}`, pageWidth / 2, pageHeight - 7, { align: 'center' });
     }
 
     // Save the PDF
@@ -826,66 +826,66 @@ const EditorView = () => {
       { x: -size * 0.7, y: size * 0.5 },
       { x: size * 0.7, y: size * 0.5 }
     ];
-    
+
     const rotated = points.map(p => ({
       x: x + p.x * Math.cos(angle) - p.y * Math.sin(angle),
       y: y + p.x * Math.sin(angle) + p.y * Math.cos(angle)
     }));
-    
+
     pdf.triangle(rotated[0].x, rotated[0].y, rotated[1].x, rotated[1].y, rotated[2].x, rotated[2].y, 'F');
   };
 
   const getDeviceIcon = (type) => {
-    switch(type) {
+    switch (type) {
       case 'cam-dome':
         return (
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10"/>
-            <circle cx="12" cy="12" r="4"/>
+            <circle cx="12" cy="12" r="10" />
+            <circle cx="12" cy="12" r="4" />
           </svg>
         );
       case 'cam-ptz':
         return (
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 2v4"/>
-            <circle cx="12" cy="10" r="4"/>
-            <path d="M8 13l-2 6h12l-2-6"/>
-            <ellipse cx="12" cy="20" rx="5" ry="2"/>
+            <path d="M12 2v4" />
+            <circle cx="12" cy="10" r="4" />
+            <path d="M8 13l-2 6h12l-2-6" />
+            <ellipse cx="12" cy="20" rx="5" ry="2" />
           </svg>
         );
       case 'cam-lpr':
         return (
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 8h12l4 4v0l-4 4H4a2 2 0 01-2-2v-4a2 2 0 012-2z"/>
-            <circle cx="7" cy="12" r="2"/>
-            <path d="M20 12h2"/>
+            <path d="M4 8h12l4 4v0l-4 4H4a2 2 0 01-2-2v-4a2 2 0 012-2z" />
+            <circle cx="7" cy="12" r="2" />
+            <path d="M20 12h2" />
           </svg>
         );
       case 'sign-designable':
         return (
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="3" width="18" height="18" rx="2"/>
-            <path d="M7 8h10M7 12h10M7 16h6"/>
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M7 8h10M7 12h10M7 16h6" />
           </svg>
         );
       case 'sign-static':
         return (
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="6" width="18" height="12" rx="2"/>
-            <path d="M8 12h8"/>
+            <rect x="3" y="6" width="18" height="12" rx="2" />
+            <path d="M8 12h8" />
           </svg>
         );
       case 'sensor-space':
         return (
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="5" width="18" height="14" rx="2"/>
+            <rect x="3" y="5" width="18" height="14" rx="2" />
             <text x="12" y="15" textAnchor="middle" fontSize="10" fill="currentColor" stroke="none" fontWeight="bold">P</text>
           </svg>
         );
       default:
         return (
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="10" />
           </svg>
         );
     }
@@ -898,13 +898,13 @@ const EditorView = () => {
         <div className="header-left">
           <button className="back-btn" onClick={goBack}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M19 12H5M12 19l-7-7 7-7"/>
+              <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
           </button>
           <div className="breadcrumb">
             <span className="breadcrumb-item">{garage.name}</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 18l6-6-6-6"/>
+              <path d="M9 18l6-6-6-6" />
             </svg>
             <select
               className="level-dropdown"
@@ -930,8 +930,8 @@ const EditorView = () => {
               title="Open in Google Maps"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                <circle cx="12" cy="10" r="3"/>
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                <circle cx="12" cy="10" r="3" />
               </svg>
               {garage.address}
             </a>
@@ -953,70 +953,70 @@ const EditorView = () => {
           <div className="level-stats-enhanced">
             <div className="stat-item">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                <line x1="16" y1="2" x2="16" y2="6"/>
-                <line x1="8" y1="2" x2="8" y2="6"/>
-                <line x1="3" y1="10" x2="21" y2="10"/>
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
               </svg>
               <span>{level.totalSpots || 0} spots</span>
             </div>
             <div className="stat-item">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"/>
-                <circle cx="12" cy="12" r="4"/>
+                <circle cx="12" cy="12" r="10" />
+                <circle cx="12" cy="12" r="4" />
               </svg>
               <span>{cameras.length} cameras</span>
             </div>
             <div className="stat-item">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4"/>
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4" />
               </svg>
               <span>{sensors.length} sensors</span>
             </div>
             <div className="stat-item">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <path d="M9 12h6"/>
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M9 12h6" />
               </svg>
               <span>{signs.length} signs</span>
             </div>
           </div>
-          <button 
+          <button
             className="export-btn"
             onClick={exportLayoutPDF}
             title="Export layout as PDF"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <path d="M12 18v-6"/>
-              <path d="M9 15l3 3 3-3"/>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <path d="M12 18v-6" />
+              <path d="M9 15l3 3 3-3" />
             </svg>
             Export PDF
           </button>
-          <button 
+          <button
             className={`settings-btn ${showLevelSettings ? 'active' : ''}`}
             onClick={() => setShowLevelSettings(!showLevelSettings)}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
             Level Settings
           </button>
-          <button 
+          <button
             className="icon-btn"
             onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}
           >
             {mode === 'dark' ? (
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="5"/>
-                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                <circle cx="12" cy="12" r="5" />
+                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
               </svg>
             ) : (
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
               </svg>
             )}
           </button>
@@ -1029,35 +1029,35 @@ const EditorView = () => {
         <aside className="device-palette">
           {/* Tabs */}
           <div className="palette-tabs">
-            <button 
+            <button
               className={`palette-tab ${activeTab === 'cameras' ? 'active' : ''}`}
               onClick={() => { setActiveTab('cameras'); setShowAddForm(false); }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10"/>
-                <circle cx="12" cy="12" r="4"/>
+                <circle cx="12" cy="12" r="10" />
+                <circle cx="12" cy="12" r="4" />
               </svg>
               <span className="tab-label">Cameras</span>
               {cameras.length > 0 && <span className="tab-badge">{cameras.length}</span>}
             </button>
-            <button 
+            <button
               className={`palette-tab ${activeTab === 'signs' ? 'active' : ''}`}
               onClick={() => { setActiveTab('signs'); setShowAddForm(false); }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <path d="M9 12h6"/>
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M9 12h6" />
               </svg>
               <span className="tab-label">Signs</span>
               {signs.length > 0 && <span className="tab-badge">{signs.length}</span>}
             </button>
-            <button 
+            <button
               className={`palette-tab ${activeTab === 'sensors' ? 'active' : ''}`}
               onClick={() => { setActiveTab('sensors'); setShowAddForm(false); }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4"/>
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4" />
               </svg>
               <span className="tab-label">Sensors</span>
               {sensors.length > 0 && <span className="tab-badge">{sensors.length}</span>}
@@ -1071,7 +1071,7 @@ const EditorView = () => {
               <>
                 <div className="palette-section-header">
                   <span>{activeTab === 'cameras' ? 'Cameras' : activeTab === 'sensors' ? 'Space Sensors' : 'Signs'} on this level</span>
-                  <button 
+                  <button
                     className="add-device-btn"
                     onClick={() => {
                       // Auto-select sensor type since there's only one
@@ -1082,7 +1082,7 @@ const EditorView = () => {
                     }}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 5v14M5 12h14"/>
+                      <path d="M12 5v14M5 12h14" />
                     </svg>
                     Add
                   </button>
@@ -1092,8 +1092,8 @@ const EditorView = () => {
                   {activeTab === 'cameras' && cameras.length === 0 && (
                     <div className="empty-state">
                       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                        <circle cx="12" cy="12" r="10"/>
-                        <circle cx="12" cy="12" r="4"/>
+                        <circle cx="12" cy="12" r="10" />
+                        <circle cx="12" cy="12" r="4" />
                       </svg>
                       <p>No cameras added yet</p>
                       <button className="btn-add-first" onClick={() => setShowAddForm(true)}>
@@ -1104,7 +1104,7 @@ const EditorView = () => {
                   {activeTab === 'sensors' && sensors.length === 0 && (
                     <div className="empty-state">
                       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                        <rect x="3" y="5" width="18" height="14" rx="2"/>
+                        <rect x="3" y="5" width="18" height="14" rx="2" />
                         <text x="12" y="15" textAnchor="middle" fontSize="10" fill="currentColor" fontWeight="bold">P</text>
                       </svg>
                       <p>No space sensors added yet</p>
@@ -1119,8 +1119,8 @@ const EditorView = () => {
                   {activeTab === 'signs' && signs.length === 0 && (
                     <div className="empty-state">
                       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                        <rect x="3" y="3" width="18" height="18" rx="2"/>
-                        <path d="M9 12h6"/>
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <path d="M9 12h6" />
                       </svg>
                       <p>No signs added yet</p>
                       <button className="btn-add-first" onClick={() => setShowAddForm(true)}>
@@ -1130,8 +1130,8 @@ const EditorView = () => {
                   )}
 
                   {activeTab === 'cameras' && cameras.map(device => (
-                    <button 
-                      key={device.id} 
+                    <button
+                      key={device.id}
                       className={`device-list-item ${selectedDevice?.id === device.id ? 'selected' : ''}`}
                       onClick={() => setSelectedDevice(device)}
                     >
@@ -1156,8 +1156,8 @@ const EditorView = () => {
                   ))}
 
                   {activeTab === 'sensors' && sensors.map(device => (
-                    <button 
-                      key={device.id} 
+                    <button
+                      key={device.id}
                       className={`device-list-item ${selectedDevice?.id === device.id ? 'selected' : ''}`}
                       onClick={() => setSelectedDevice(device)}
                     >
@@ -1179,8 +1179,8 @@ const EditorView = () => {
                   ))}
 
                   {activeTab === 'signs' && signs.map(device => (
-                    <button 
-                      key={device.id} 
+                    <button
+                      key={device.id}
                       className={`device-list-item ${selectedDevice?.id === device.id ? 'selected' : ''}`}
                       onClick={() => setSelectedDevice(device)}
                     >
@@ -1207,7 +1207,7 @@ const EditorView = () => {
                     setNewDevice({ type: '', name: '', ipAddress: '', port: '', direction: 'in', rotation: 0, flowDestination: 'garage-entry', viewImage: null, previewUrl: '', displayMapping: [], overrideState: 'auto', serialAddress: '', spotNumber: '', parkingType: 'regular', sensorImage: null, externalUrl: '' });
                   }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M19 12H5M12 19l-7-7 7-7"/>
+                      <path d="M19 12H5M12 19l-7-7 7-7" />
                     </svg>
                   </button>
                   <span className="form-title">Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'sensors' ? 'Space Sensor' : 'Sign'}</span>
@@ -1289,7 +1289,7 @@ const EditorView = () => {
                     <div className="form-section">
                       <label className="form-label-small">Traffic Flow</label>
                       <p className="flow-hint">Where are cars going when detected by this device?</p>
-                      
+
                       <div className="flow-setup-compact">
                         <div className="flow-direction-buttons">
                           <button
@@ -1297,7 +1297,7 @@ const EditorView = () => {
                             onClick={() => setNewDevice({ ...newDevice, direction: 'in', flowDestination: 'garage-entry' })}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M5 12h14M12 5l7 7-7 7"/>
+                              <path d="M5 12h14M12 5l7 7-7 7" />
                             </svg>
                             INTO {level.name}
                           </button>
@@ -1306,7 +1306,7 @@ const EditorView = () => {
                             onClick={() => setNewDevice({ ...newDevice, direction: 'out', flowDestination: 'garage-exit' })}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M19 12H5M12 19l-7-7 7-7"/>
+                              <path d="M19 12H5M12 19l-7-7 7-7" />
                             </svg>
                             OUT OF {level.name}
                           </button>
@@ -1336,21 +1336,21 @@ const EditorView = () => {
                       {newDevice.viewImage ? (
                         <div className="image-preview-small">
                           <img src={newDevice.viewImage} alt="Camera view preview" />
-                          <button 
+                          <button
                             className="remove-preview"
                             onClick={() => setNewDevice({ ...newDevice, viewImage: null })}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M18 6L6 18M6 6l12 12"/>
+                              <path d="M18 6L6 18M6 6l12 12" />
                             </svg>
                           </button>
                         </div>
                       ) : (
                         <button className="add-image-btn" onClick={() => fileInputRef.current?.click()}>
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                            <circle cx="8.5" cy="8.5" r="1.5"/>
-                            <path d="M21 15l-5-5L5 21"/>
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                            <circle cx="8.5" cy="8.5" r="1.5" />
+                            <path d="M21 15l-5-5L5 21" />
                           </svg>
                           Add image
                         </button>
@@ -1411,7 +1411,7 @@ const EditorView = () => {
                               type="checkbox"
                               checked={newDevice.displayMapping.includes(lvl.id)}
                               onChange={(e) => {
-                                const updated = e.target.checked 
+                                const updated = e.target.checked
                                   ? [...newDevice.displayMapping, lvl.id]
                                   : newDevice.displayMapping.filter(id => id !== lvl.id);
                                 setNewDevice({ ...newDevice, displayMapping: updated });
@@ -1475,7 +1475,7 @@ const EditorView = () => {
                         {newDevice.sensorImage ? (
                           <div className="sensor-image-preview">
                             <img src={newDevice.sensorImage} alt="Sensor location" />
-                            <button 
+                            <button
                               className="remove-preview-mini"
                               onClick={() => setNewDevice({ ...newDevice, sensorImage: null })}
                             >
@@ -1511,13 +1511,13 @@ const EditorView = () => {
 
                 {/* Submit - Fixed at bottom */}
                 <div className="form-footer">
-                  <button 
+                  <button
                     className="btn-add-device"
                     onClick={addDevice}
                     disabled={!newDevice.type || !newDevice.name}
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 5v14M5 12h14"/>
+                      <path d="M12 5v14M5 12h14" />
                     </svg>
                     Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'sensors' ? 'Sensor' : 'Sign'}
                   </button>
@@ -1548,7 +1548,7 @@ const EditorView = () => {
               <h3>Level Settings</h3>
               <button className="modal-close" onClick={() => setShowLevelSettings(false)}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
+                  <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
               </button>
             </div>
@@ -1667,10 +1667,10 @@ const EditorView = () => {
                   {level.bgImage ? (
                     <div className="bg-uploaded">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M20 6L9 17l-5-5"/>
+                        <path d="M20 6L9 17l-5-5" />
                       </svg>
                       <span>Image uploaded</span>
-                      <button 
+                      <button
                         className="btn-remove"
                         onClick={() => {
                           const updatedGarages = garages.map(g => {
@@ -1686,16 +1686,16 @@ const EditorView = () => {
                         }}
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M18 6L6 18M6 6l12 12"/>
+                          <path d="M18 6L6 18M6 6l12 12" />
                         </svg>
                       </button>
                     </div>
                   ) : (
                     <label htmlFor="bg-upload-modal" className="bg-upload-label">
                       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="3" width="18" height="18" rx="2"/>
-                        <circle cx="8.5" cy="8.5" r="1.5"/>
-                        <path d="M21 15l-5-5L5 21"/>
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <path d="M21 15l-5-5L5 21" />
                       </svg>
                       <span>Click to upload floor plan</span>
                     </label>
