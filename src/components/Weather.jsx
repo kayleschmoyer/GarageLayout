@@ -1,182 +1,304 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 
-const Weather = ({ address }) => {
-    const [weatherData, setWeatherData] = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
+const DEBOUNCE_DELAY_MS = 450;
+const RETRY_BASE_DELAY_MS = 250;
+const MAX_CACHE_SIZE = 100;
+const CACHE_TTL_MS = 15 * 60 * 1000;
 
-    const debounceTimerRef = useRef(null);
-    const abortRef = useRef(null);
+const DEFAULT_STATE = Object.freeze({
+    data: null,
+    loading: false,
+    error: null
+});
 
-    // Simple in-memory caches (per session)
-    const geoCacheRef = useRef(new Map());
-    const weatherCacheRef = useRef(new Map());
+const validateWeatherData = (data) => {
+    if (!data || typeof data !== 'object') return null;
+    const current = data.current;
+    if (!current || typeof current !== 'object') return null;
+    if (typeof current.temperature_2m !== 'number') return null;
+    return current;
+};
 
-    const normalizeKey = (value) => value.trim().toLowerCase();
+const sanitizeNumber = (value, fallback = 0) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : fallback;
+};
 
-    const getWeatherIcon = (code) => {
-        if (code === 0) return "☀️";
-        if (code <= 3) return "⛅";
-        if (code <= 48) return "🌫️";
-        if (code <= 67) return "🌧️";
-        if (code <= 77) return "🌨️";
-        if (code <= 82) return "🌦️";
-        if (code <= 86) return "🌨️";
-        return "⛈️";
-    };
+const normalizeKey = (value) => {
+    if (typeof value !== 'string') return '';
+    return value.trim().toLowerCase();
+};
 
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const getWeatherIcon = (code) => {
+    const numCode = sanitizeNumber(code, -1);
+    if (numCode === 0) return "☀️";
+    if (numCode <= 3) return "⛅";
+    if (numCode <= 48) return "🌫️";
+    if (numCode <= 67) return "🌧️";
+    if (numCode <= 77) return "🌨️";
+    if (numCode <= 82) return "🌦️";
+    if (numCode <= 86) return "🌨️";
+    return "⛈️";
+};
 
-    const fetchWithRetry = async (url, opts, { retries = 2 } = {}) => {
-        let lastErr = null;
+const sleep = (ms) => new Promise((resolve) => {
+    const id = setTimeout(resolve, Math.max(0, ms));
+    return () => clearTimeout(id);
+});
 
-        for (let attempt = 0; attempt <= retries; attempt++) {
-            try {
-                const res = await fetch(url, opts);
+const pruneCache = (cache, maxSize) => {
+    if (cache.size <= maxSize) return;
+    const entries = Array.from(cache.entries());
+    entries.sort((a, b) => (a[1].timestamp || 0) - (b[1].timestamp || 0));
+    const toRemove = entries.slice(0, entries.length - maxSize);
+    toRemove.forEach(([key]) => cache.delete(key));
+};
 
-                // Retry only on transient throttling/outage scenarios
-                if (res.status === 429 || res.status === 503) {
-                    if (attempt < retries) {
-                        await sleep(250 * Math.pow(2, attempt)); // 250ms, 500ms, ...
-                        continue;
-                    }
-                }
+const isCacheValid = (entry) => {
+    if (!entry || typeof entry !== 'object') return false;
+    if (!entry.timestamp) return false;
+    return Date.now() - entry.timestamp < CACHE_TTL_MS;
+};
 
-                return res;
-            } catch (e) {
-                lastErr = e;
+const fetchWithRetry = async (url, opts = {}, config = {}) => {
+    const { retries = 2, timeoutMs = 10000 } = config;
+    let lastError = null;
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        const timeoutController = new AbortController();
+        const combinedSignal = opts.signal;
+
+        const timeoutId = setTimeout(() => {
+            timeoutController.abort();
+        }, timeoutMs);
+
+        try {
+            if (combinedSignal?.aborted) {
+                throw new DOMException('Aborted', 'AbortError');
+            }
+
+            const fetchPromise = fetch(url, {
+                ...opts,
+                signal: timeoutController.signal
+            });
+
+            const abortPromise = combinedSignal ? new Promise((_, reject) => {
+                combinedSignal.addEventListener('abort', () => {
+                    reject(new DOMException('Aborted', 'AbortError'));
+                }, { once: true });
+            }) : null;
+
+            const res = await (abortPromise
+                ? Promise.race([fetchPromise, abortPromise])
+                : fetchPromise);
+
+            clearTimeout(timeoutId);
+
+            if (res.status === 429 || res.status === 503) {
                 if (attempt < retries) {
-                    await sleep(250 * Math.pow(2, attempt));
+                    await sleep(RETRY_BASE_DELAY_MS * Math.pow(2, attempt));
                     continue;
                 }
             }
+
+            return res;
+        } catch (err) {
+            clearTimeout(timeoutId);
+            lastError = err;
+
+            if (err?.name === 'AbortError') {
+                throw err;
+            }
+
+            if (attempt < retries) {
+                await sleep(RETRY_BASE_DELAY_MS * Math.pow(2, attempt));
+                continue;
+            }
         }
+    }
 
-        throw lastErr ?? new Error("Network request failed");
-    };
+    throw lastError ?? new Error("Network request failed");
+};
 
-    const geocodeOpenMeteo = async (query, signal) => {
-        const url =
-            `https://geocoding-api.open-meteo.com/v1/search` +
-            `?name=${encodeURIComponent(query)}` +
-            `&count=1&language=en&format=json`;
+const geocodeOpenMeteo = async (query, signal) => {
+    if (!query || typeof query !== 'string') return null;
 
-        const res = await fetchWithRetry(url, { signal }, { retries: 1 });
+    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=en&format=json`;
+
+    try {
+        const res = await fetchWithRetry(url, { signal }, { retries: 1, timeoutMs: 8000 });
+
         if (!res.ok) return null;
 
         const data = await res.json();
-        const top = data?.results?.[0];
-        if (!top) return null;
 
-        const locationName =
-            [top.name, top.admin1, top.country].filter(Boolean).join(", ") || query;
+        if (!data || typeof data !== 'object') return null;
+
+        const results = Array.isArray(data.results) ? data.results : [];
+        const top = results[0];
+
+        if (!top || typeof top !== 'object') return null;
+        if (typeof top.latitude !== 'number' || typeof top.longitude !== 'number') return null;
+
+        const nameParts = [top.name, top.admin1, top.country].filter(
+            part => typeof part === 'string' && part.trim()
+        );
+        const locationName = nameParts.length > 0 ? nameParts.join(", ") : query;
 
         return {
             latitude: top.latitude,
             longitude: top.longitude,
             locationName
         };
-    };
+    } catch (err) {
+        if (err?.name === 'AbortError') throw err;
+        return null;
+    }
+};
 
-    const geocodeNominatim = async (query, signal) => {
-        // NOTE:
-        // - In browser JS you cannot reliably set User-Agent; Nominatim expects identification.
-        // - Include "email=" per Nominatim docs for larger volumes; for light use, still helpful. :contentReference[oaicite:2]{index=2}
-        // - Consider proxying + caching server-side for production use. :contentReference[oaicite:3]{index=3}
-        const url =
-            `https://nominatim.openstreetmap.org/search` +
-            `?q=${encodeURIComponent(query)}` +
-            `&format=jsonv2&limit=1&addressdetails=0` +
-            `&email=${encodeURIComponent("you@example.com")}`;
+const geocodeNominatim = async (query, signal) => {
+    if (!query || typeof query !== 'string') return null;
 
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=jsonv2&limit=1&addressdetails=0`;
+
+    try {
         const res = await fetchWithRetry(
             url,
             {
                 signal,
                 headers: {
-                    // These are allowed browser headers; "User-Agent" is not reliably settable in fetch().
                     "Accept": "application/json"
                 }
             },
-            { retries: 2 }
+            { retries: 2, timeoutMs: 10000 }
         );
 
         if (!res.ok) return null;
 
         const data = await res.json();
-        const top = data?.[0];
-        if (!top) return null;
+
+        if (!Array.isArray(data) || data.length === 0) return null;
+
+        const top = data[0];
+
+        if (!top || typeof top !== 'object') return null;
+
+        const lat = Number(top.lat);
+        const lon = Number(top.lon);
+
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+        const displayName = typeof top.display_name === 'string' ? top.display_name : query;
+        const locationName = displayName.split(",")[0] || query;
 
         return {
-            latitude: Number(top.lat),
-            longitude: Number(top.lon),
-            locationName: (top.display_name || query).split(",")[0]
+            latitude: lat,
+            longitude: lon,
+            locationName
         };
-    };
+    } catch (err) {
+        if (err?.name === 'AbortError') throw err;
+        return null;
+    }
+};
+
+const Weather = React.memo(({ address }) => {
+    const [state, setState] = useState(DEFAULT_STATE);
+
+    const debounceTimerRef = useRef(null);
+    const abortControllerRef = useRef(null);
+    const geoCacheRef = useRef(new Map());
+    const weatherCacheRef = useRef(new Map());
+    const mountedRef = useRef(true);
+
+    const safeSetState = useCallback((updater) => {
+        if (mountedRef.current) {
+            setState(prev => typeof updater === 'function' ? updater(prev) : updater);
+        }
+    }, []);
+
+    const clearPendingRequests = useCallback(() => {
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+            debounceTimerRef.current = null;
+        }
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+    }, []);
 
     useEffect(() => {
-        const raw = address ?? "";
-        const trimmed = raw.trim();
+        mountedRef.current = true;
 
-        if (!trimmed) {
-            setWeatherData(null);
-            setError(null);
-            setLoading(false);
+        return () => {
+            mountedRef.current = false;
+            clearPendingRequests();
+        };
+    }, [clearPendingRequests]);
+
+    useEffect(() => {
+        const rawAddress = typeof address === 'string' ? address : '';
+        const trimmedAddress = rawAddress.trim();
+
+        if (!trimmedAddress) {
+            safeSetState(DEFAULT_STATE);
+            clearPendingRequests();
             return;
         }
 
-        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        clearPendingRequests();
 
         debounceTimerRef.current = setTimeout(async () => {
-            if (abortRef.current) abortRef.current.abort();
             const controller = new AbortController();
-            abortRef.current = controller;
+            abortControllerRef.current = controller;
 
-            setLoading(true);
-            setError(null);
+            safeSetState({
+                data: null,
+                loading: true,
+                error: null
+            });
 
-            const key = normalizeKey(trimmed);
+            const cacheKey = normalizeKey(trimmedAddress);
 
             try {
-                // Weather cache
-                const cachedWeather = weatherCacheRef.current.get(key);
-                if (cachedWeather) {
-                    setWeatherData(cachedWeather);
+                const cachedWeather = weatherCacheRef.current.get(cacheKey);
+                if (cachedWeather && isCacheValid(cachedWeather)) {
+                    safeSetState({
+                        data: cachedWeather.data,
+                        loading: false,
+                        error: null
+                    });
                     return;
                 }
 
-                // Geocode cache
-                let geo = geoCacheRef.current.get(key);
+                let geo = geoCacheRef.current.get(cacheKey);
 
-                if (!geo) {
-                    // Try Open-Meteo first (best for city/postal searches) :contentReference[oaicite:4]{index=4}
-                    geo = await geocodeOpenMeteo(trimmed, controller.signal);
+                if (!geo || !isCacheValid(geo)) {
+                    geo = await geocodeOpenMeteo(trimmedAddress, controller.signal);
 
-                    // Fallback to Nominatim for street-address geocoding
                     if (!geo) {
-                        geo = await geocodeNominatim(trimmed, controller.signal);
+                        geo = await geocodeNominatim(trimmedAddress, controller.signal);
                     }
 
                     if (!geo) {
-                        throw new Error(
-                            "Location not found. Try adding City + State or ZIP (e.g., “123 Main St, Allentown, PA 18104”)."
-                        );
+                        throw new Error("Location not found. Try adding City + State or ZIP.");
                     }
 
-                    geoCacheRef.current.set(key, geo);
+                    geoCacheRef.current.set(cacheKey, {
+                        ...geo,
+                        timestamp: Date.now()
+                    });
+
+                    pruneCache(geoCacheRef.current, MAX_CACHE_SIZE);
                 }
 
-                // Weather
-                const weatherUrl =
-                    `https://api.open-meteo.com/v1/forecast` +
-                    `?latitude=${geo.latitude}&longitude=${geo.longitude}` +
-                    `&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m` +
-                    `&temperature_unit=fahrenheit&wind_speed_unit=mph`;
+                const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${geo.latitude}&longitude=${geo.longitude}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`;
 
                 const weatherRes = await fetchWithRetry(
                     weatherUrl,
                     { signal: controller.signal },
-                    { retries: 1 }
+                    { retries: 1, timeoutMs: 8000 }
                 );
 
                 if (!weatherRes.ok) {
@@ -184,40 +306,54 @@ const Weather = ({ address }) => {
                 }
 
                 const weatherInfo = await weatherRes.json();
-                const current = weatherInfo?.current;
+                const currentWeather = validateWeatherData(weatherInfo);
 
-                if (!current) {
+                if (!currentWeather) {
                     throw new Error("Weather data unavailable");
                 }
 
                 const payload = {
-                    temperature: Math.round(current.temperature_2m),
-                    humidity: current.relative_humidity_2m,
-                    windSpeed: Math.round(current.wind_speed_10m),
-                    weatherCode: current.weather_code,
-                    location: geo.locationName
+                    temperature: Math.round(sanitizeNumber(currentWeather.temperature_2m, 0)),
+                    humidity: sanitizeNumber(currentWeather.relative_humidity_2m, 0),
+                    windSpeed: Math.round(sanitizeNumber(currentWeather.wind_speed_10m, 0)),
+                    weatherCode: sanitizeNumber(currentWeather.weather_code, 0),
+                    location: geo.locationName || trimmedAddress
                 };
 
-                weatherCacheRef.current.set(key, payload);
-                setWeatherData(payload);
+                weatherCacheRef.current.set(cacheKey, {
+                    data: payload,
+                    timestamp: Date.now()
+                });
+
+                pruneCache(weatherCacheRef.current, MAX_CACHE_SIZE);
+
+                safeSetState({
+                    data: payload,
+                    loading: false,
+                    error: null
+                });
             } catch (err) {
-                if (err?.name !== "AbortError") {
-                    console.error("Weather Error:", err);
-                    setError(err?.message || "Weather failed");
-                    setWeatherData(null);
+                if (err?.name === 'AbortError') {
+                    return;
                 }
-            } finally {
-                setLoading(false);
+
+                safeSetState({
+                    data: null,
+                    loading: false,
+                    error: typeof err?.message === 'string' ? err.message : "Weather failed"
+                });
             }
-        }, 450);
+        }, DEBOUNCE_DELAY_MS);
 
-        return () => {
-            if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-            if (abortRef.current) abortRef.current.abort();
-        };
-    }, [address]);
+        return clearPendingRequests;
+    }, [address, safeSetState, clearPendingRequests]);
 
-    if (loading) {
+    const weatherIcon = useMemo(() => {
+        if (!state.data) return null;
+        return getWeatherIcon(state.data.weatherCode);
+    }, [state.data]);
+
+    if (state.loading) {
         return (
             <div className="status-badge" style={{ opacity: 0.65 }} title="Loading weather">
                 <span>⏳</span>
@@ -226,24 +362,28 @@ const Weather = ({ address }) => {
         );
     }
 
-    if (error) {
+    if (state.error) {
         return (
-            <div className="status-badge" style={{ opacity: 0.65 }} title={error}>
+            <div className="status-badge" style={{ opacity: 0.65 }} title={state.error}>
                 <span>⚠️</span>
                 <span style={{ fontSize: 12 }}>Weather unavailable</span>
             </div>
         );
     }
 
-    if (!weatherData) return null;
+    if (!state.data) {
+        return null;
+    }
 
     return (
-        <div className="status-badge" title={`Weather at ${weatherData.location}`}>
-            <span>{getWeatherIcon(weatherData.weatherCode)}</span>
-            <span>{weatherData.temperature}°F</span>
-            <span style={{ opacity: 0.55, fontSize: 11 }}>{weatherData.location}</span>
+        <div className="status-badge" title={`Weather at ${state.data.location || 'Unknown'}`}>
+            <span>{weatherIcon}</span>
+            <span>{state.data.temperature}°F</span>
+            <span style={{ opacity: 0.55, fontSize: 11 }}>{state.data.location || ''}</span>
         </div>
     );
-};
+});
+
+Weather.displayName = 'Weather';
 
 export default Weather;
