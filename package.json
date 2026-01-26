@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "vite build && electron-builder",
-    "electron:preview": "electron ."
+    "electron:preview": "vite build && electron ."
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
