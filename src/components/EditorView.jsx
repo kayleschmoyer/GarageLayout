@@ -109,6 +109,23 @@ const EditorView = () => {
     return () => { mountedRef.current = false; };
   }, []);
 
+  // Safe context extraction - must be before useEffects that depend on these values
+  const garages = safeArray(context?.garages);
+  const setGarages = typeof context?.setGarages === 'function' ? context.setGarages : () => {};
+  const selectedGarageId = context?.selectedGarageId;
+  const selectedLevelId = context?.selectedLevelId;
+  const setSelectedLevelId = typeof context?.setSelectedLevelId === 'function' ? context.setSelectedLevelId : () => {};
+  const selectedDevice = context?.selectedDevice;
+  const setSelectedDevice = typeof context?.setSelectedDevice === 'function' ? context.setSelectedDevice : () => {};
+  const goBack = typeof context?.goBack === 'function' ? context.goBack : () => {};
+  const mode = context?.mode === 'light' ? 'light' : 'dark';
+  const setMode = typeof context?.setMode === 'function' ? context.setMode : () => {};
+
+  // State declarations that are used in the Electron useEffect below
+  const [importMessage, setImportMessage] = useState(null);
+  const [isElectron, setIsElectron] = useState(false);
+  const [configWatcherActive, setConfigWatcherActive] = useState(false);
+
   // Electron: Auto-load and watch CameraHub config file
   React.useEffect(() => {
     if (!window.electronAPI) return;
@@ -209,18 +226,6 @@ const EditorView = () => {
     };
   }, [selectedGarageId, selectedLevelId, setGarages]);
 
-  // Safe context extraction
-  const garages = safeArray(context?.garages);
-  const setGarages = typeof context?.setGarages === 'function' ? context.setGarages : () => {};
-  const selectedGarageId = context?.selectedGarageId;
-  const selectedLevelId = context?.selectedLevelId;
-  const setSelectedLevelId = typeof context?.setSelectedLevelId === 'function' ? context.setSelectedLevelId : () => {};
-  const selectedDevice = context?.selectedDevice;
-  const setSelectedDevice = typeof context?.setSelectedDevice === 'function' ? context.setSelectedDevice : () => {};
-  const goBack = typeof context?.goBack === 'function' ? context.goBack : () => {};
-  const mode = context?.mode === 'light' ? 'light' : 'dark';
-  const setMode = typeof context?.setMode === 'function' ? context.setMode : () => {};
-
   // Theme colors based on mode
   const theme = useMemo(() => ({
     bg: mode === 'dark' ? '#09090b' : '#f4f4f5',
@@ -246,10 +251,7 @@ const EditorView = () => {
   const [showLevelSettings, setShowLevelSettings] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [configImportType, setConfigImportType] = useState('devicesConfig'); // 'devicesConfig', 'cameraHub'
-  const [importMessage, setImportMessage] = useState(null);
   const [toolMode, setToolMode] = useState('select');
-  const [isElectron, setIsElectron] = useState(false);
-  const [configWatcherActive, setConfigWatcherActive] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [cameraFormStep, setCameraFormStep] = useState(1); // 1: hardware, 2: type, 3: config
   const [activeStreamTab, setActiveStreamTab] = useState(1); // For dual lens: 1 or 2
