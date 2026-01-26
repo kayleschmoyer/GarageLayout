@@ -1,5 +1,12 @@
 import React, { useContext, useEffect, useState, useRef } from 'react';
 import { AppContext } from '../App';
+import {
+  generateCameraHubConfig,
+  generateDevicesConfig,
+  generateFLICameraConfig,
+  downloadFile,
+  getConfigFilePaths
+} from '../services/ConfigService';
 
 const InspectorPanel = () => {
   const { 
@@ -105,6 +112,35 @@ const InspectorPanel = () => {
       state: state.toUpperCase(),
       time: timeStr
     });
+  };
+
+  const [configExportMessage, setConfigExportMessage] = useState(null);
+
+  // Export device config files
+  const exportDeviceConfigFiles = () => {
+    if (!device) return;
+
+    const isCamera = device.type?.startsWith('cam-');
+    const isFLI = device.type === 'cam-fli';
+
+    // Generate and download DevicesConfig entry
+    const devicesXml = generateDevicesConfig([device]);
+    downloadFile(devicesXml, `${device.name}-device-entry.xml`);
+
+    if (isCamera) {
+      // Generate and download CameraHub entry
+      const cameraHubXml = generateCameraHubConfig([device]);
+      downloadFile(cameraHubXml, `${device.name}-camerahub-entry.xml`);
+
+      // Generate FLI config if applicable
+      if (isFLI) {
+        const fliXml = generateFLICameraConfig(device);
+        downloadFile(fliXml, `${device.name}.xml`);
+      }
+    }
+
+    setConfigExportMessage(`Exported config for ${device.name}`);
+    setTimeout(() => setConfigExportMessage(null), 3000);
   };
 
   if (!currentLevel || !selectedDevice || !device) {
@@ -587,6 +623,61 @@ const InspectorPanel = () => {
             )}
           </div>
         )}
+
+        {/* Config Files Section */}
+        <div className="inspector-section-compact">
+          <label className="section-title-small">Config Files</label>
+          <div className="config-paths-list" style={{ fontSize: 10, color: '#71717a', fontFamily: 'monospace', marginBottom: 8 }}>
+            {getConfigFilePaths(device).map((path, idx) => (
+              <div key={idx} style={{ marginBottom: 2, wordBreak: 'break-all' }}>{path}</div>
+            ))}
+          </div>
+          <button
+            className="export-config-btn"
+            onClick={exportDeviceConfigFiles}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              width: '100%',
+              padding: '8px 12px',
+              background: 'rgba(34, 197, 94, 0.1)',
+              border: '1px solid rgba(34, 197, 94, 0.3)',
+              borderRadius: 6,
+              color: '#22c55e',
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Export Config Files
+          </button>
+          {configExportMessage && (
+            <div style={{
+              marginTop: 8,
+              padding: '6px 10px',
+              background: 'rgba(34, 197, 94, 0.15)',
+              borderRadius: 4,
+              fontSize: 11,
+              color: '#22c55e',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+              {configExportMessage}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Delete button - fixed at bottom */}
