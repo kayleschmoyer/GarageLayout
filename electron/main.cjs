@@ -50,7 +50,37 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    const distPath = path.join(__dirname, '../dist/index.html');
+    if (fs.existsSync(distPath)) {
+      mainWindow.loadFile(distPath);
+    } else {
+      // Show helpful error when dist files are missing
+      mainWindow.loadURL(`data:text/html,
+        <html>
+          <head>
+            <title>Build Required</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                     padding: 40px; background: #1a1a2e; color: #eee; }
+              h1 { color: #e94560; }
+              code { background: #16213e; padding: 4px 8px; border-radius: 4px; }
+              .hint { margin-top: 20px; padding: 16px; background: #16213e; border-radius: 8px; }
+            </style>
+          </head>
+          <body>
+            <h1>Build Required</h1>
+            <p>The application has not been built yet. The file was not found:</p>
+            <code>${distPath.replace(/\\/g, '\\\\')}</code>
+            <div class="hint">
+              <p><strong>To fix this, run one of the following commands:</strong></p>
+              <p><code>npm run electron:preview</code> - Build and run the app</p>
+              <p><code>npm run electron:dev</code> - Run in development mode</p>
+              <p><code>npm run build</code> - Build only (then run electron again)</p>
+            </div>
+          </body>
+        </html>
+      `);
+    }
   }
 
   mainWindow.on('closed', () => {
