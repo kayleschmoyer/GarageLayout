@@ -1,224 +1,369 @@
-import React, { useContext, useState, useRef, useEffect } from 'react';
+import React, { useContext, useState, useRef, useMemo, useCallback } from 'react';
+import { Modal, ModalDialog, Input, Button } from '@mui/joy';
 import { AppContext } from '../App';
 import MapCanvas from './MapCanvas';
 import InspectorPanel from './InspectorPanel';
 import { jsPDF } from 'jspdf';
 
-const EditorView = () => {
-  const {
-    garages,
-    setGarages,
-    selectedGarageId,
-    selectedLevelId,
-    setSelectedLevelId,
-    selectedDevice,
-    setSelectedDevice,
-    goBack,
-    mode,
-    setMode
-  } = useContext(AppContext);
+// ========================= CONSTANTS =========================
 
+const INPUT_SX = Object.freeze({
+  fontSize: 14,
+  color: '#fafafa',
+  bgcolor: '#27272a',
+  borderColor: '#3f3f46',
+  '&:hover': { borderColor: '#52525b' },
+  '&:focus-within': { borderColor: '#3b82f6' },
+  '&::placeholder': { color: '#71717a' }
+});
+
+const LABEL_STYLE = Object.freeze({
+  display: 'block',
+  fontSize: 12,
+  fontWeight: 600,
+  marginBottom: 6,
+  color: '#a1a1aa',
+  textTransform: 'uppercase',
+  letterSpacing: '0.5px'
+});
+
+const MODAL_SX = Object.freeze({
+  borderRadius: '12px',
+  p: 0,
+  width: '100%',
+  maxWidth: 480,
+  bgcolor: '#18181b',
+  border: '1px solid #3f3f46',
+  overflow: 'hidden'
+});
+
+const deviceTypes = {
+  cameras: [
+    { id: 'cam-fli', name: 'FLI Camera' },
+    { id: 'cam-lpr', name: 'LPR Camera' },
+    { id: 'cam-people', name: 'People Counting' }
+  ],
+  hardwareTypes: [
+    { id: 'dual-lens', name: 'Dual Lens', streams: 2 },
+    { id: 'bullet', name: 'Bullet', streams: 1 }
+  ],
+  signs: [
+    { id: 'sign-led', name: 'LED Sign' },
+    { id: 'sign-static', name: 'Static Sign' },
+    { id: 'sign-designable', name: 'Designable Sign' }
+  ],
+  sensors: [
+    { id: 'sensor-space', name: 'Space Sensor' }
+  ]
+};
+
+const safeArray = (arr) => (Array.isArray(arr) ? arr : []);
+const safeString = (val) => (typeof val === 'string' ? val : '');
+const safeNumber = (val, fallback = 0) => {
+  if (typeof val === 'number' && Number.isFinite(val)) return val;
+  const parsed = parseInt(val, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+const sanitizeString = (val) => safeString(val).trim();
+
+// ========================= PDF EXPORT HELPER FUNCTIONS =========================
+
+const drawTriangle = (pdf, cx, cy, size, rotation) => {
+  const angleRad = (rotation - 90) * Math.PI / 180;
+  const points = [];
+  for (let i = 0; i < 3; i++) {
+    const angle = angleRad + (i * 2 * Math.PI / 3);
+    points.push({
+      x: cx + size * Math.cos(angle),
+      y: cy + size * Math.sin(angle)
+    });
+  }
+  pdf.triangle(
+    points[0].x, points[0].y,
+    points[1].x, points[1].y,
+    points[2].x, points[2].y,
+    'F'
+  );
+};
+
+// ========================= MAIN COMPONENT =========================
+
+const EditorView = () => {
+  const context = useContext(AppContext);
+  const mountedRef = useRef(true);
+  const fileInputRef = useRef(null);
+
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // Safe context extraction
+  const garages = safeArray(context?.garages);
+  const setGarages = typeof context?.setGarages === 'function' ? context.setGarages : () => {};
+  const selectedGarageId = context?.selectedGarageId;
+  const selectedLevelId = context?.selectedLevelId;
+  const setSelectedLevelId = typeof context?.setSelectedLevelId === 'function' ? context.setSelectedLevelId : () => {};
+  const selectedDevice = context?.selectedDevice;
+  const setSelectedDevice = typeof context?.setSelectedDevice === 'function' ? context.setSelectedDevice : () => {};
+  const goBack = typeof context?.goBack === 'function' ? context.goBack : () => {};
+  const mode = context?.mode === 'light' ? 'light' : 'dark';
+  const setMode = typeof context?.setMode === 'function' ? context.setMode : () => {};
+
+  // Theme colors based on mode
+  const theme = useMemo(() => ({
+    bg: mode === 'dark' ? '#09090b' : '#f4f4f5',
+    bgSurface: mode === 'dark' ? '#18181b' : '#ffffff',
+    bgElevated: mode === 'dark' ? 'rgba(24, 24, 27, 0.8)' : 'rgba(255, 255, 255, 0.95)',
+    bgHover: mode === 'dark' ? 'rgba(39, 39, 42, 0.8)' : 'rgba(244, 244, 245, 0.9)',
+    bgButton: mode === 'dark' ? 'rgba(63, 63, 70, 0.6)' : 'rgba(228, 228, 231, 0.8)',
+    bgButtonHover: mode === 'dark' ? 'rgba(82, 82, 91, 0.8)' : 'rgba(212, 212, 216, 0.9)',
+    border: mode === 'dark' ? '#27272a' : '#e4e4e7',
+    borderSubtle: mode === 'dark' ? '#3f3f46' : '#d4d4d8',
+    text: mode === 'dark' ? '#fafafa' : '#18181b',
+    textSecondary: mode === 'dark' ? '#a1a1aa' : '#52525b',
+    textMuted: mode === 'dark' ? '#71717a' : '#71717a',
+    sidebar: mode === 'dark' ? '#18181b' : '#ffffff',
+    sidebarBorder: mode === 'dark' ? '#27272a' : '#e4e4e7',
+    inputBg: mode === 'dark' ? '#27272a' : '#f4f4f5',
+    inputBorder: mode === 'dark' ? '#444' : '#d4d4d8'
+  }), [mode]);
+
+  // Local state
   const [activeTab, setActiveTab] = useState('cameras');
   const [showAddForm, setShowAddForm] = useState(false);
   const [showLevelSettings, setShowLevelSettings] = useState(false);
-  const [weatherData, setWeatherData] = useState(null);
-  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [toolMode, setToolMode] = useState('select');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [cameraFormStep, setCameraFormStep] = useState(1); // 1: hardware, 2: type, 3: config
+  const [activeStreamTab, setActiveStreamTab] = useState(1); // For dual lens: 1 or 2
   const [newDevice, setNewDevice] = useState({
     type: '',
+    hardwareType: '', // 'dual-lens' or 'bullet'
     name: '',
+    // Stream 1 settings
+    stream1: {
+      ipAddress: '',
+      port: '',
+      direction: 'in',
+      rotation: 0,
+      flowDestination: 'garage-entry',
+      viewImage: null,
+      externalUrl: ''
+    },
+    // Stream 2 settings (for dual lens)
+    stream2: {
+      ipAddress: '',
+      port: '',
+      direction: 'in',
+      rotation: 0,
+      flowDestination: 'garage-entry',
+      viewImage: null,
+      externalUrl: ''
+    },
+    // Legacy fields for signs/sensors
     ipAddress: '',
     port: '',
     direction: 'in',
     rotation: 0,
     flowDestination: 'garage-entry',
     viewImage: null,
-    // Sign-specific fields
     previewUrl: '',
     displayMapping: [],
     overrideState: 'auto',
-    // Sensor-specific fields
     serialAddress: '',
     spotNumber: '',
     parkingType: 'regular',
     sensorImage: null,
-    // External URL for cameras and signs
     externalUrl: ''
   });
-  const fileInputRef = useRef(null);
-  const sensorImageRef = useRef(null);
 
-  const garage = garages.find(g => g.id === selectedGarageId);
-  const level = garage?.levels.find(l => l.id === selectedLevelId);
+  // Memoized garage and level
+  const garage = useMemo(() => {
+    if (selectedGarageId == null) return null;
+    return garages.find(g => g && g.id === selectedGarageId) || null;
+  }, [garages, selectedGarageId]);
 
-  if (!garage || !level) {
-    return null;
-  }
+  const level = useMemo(() => {
+    if (!garage || selectedLevelId == null) return null;
+    return safeArray(garage.levels).find(l => l && l.id === selectedLevelId) || null;
+  }, [garage, selectedLevelId]);
 
-  const deviceTypes = {
-    cameras: [
-      { id: 'cam-dome', name: 'Dome Camera', icon: 'dome' },
-      { id: 'cam-ptz', name: 'PTZ Camera', icon: 'ptz' },
-      { id: 'cam-lpr', name: 'LPR Camera', icon: 'lpr' }
-    ],
-    sensors: [
-      { id: 'sensor-space', name: 'Space Sensor', icon: 'space' }
-    ],
-    signs: [
-      { id: 'sign-designable', name: 'Designable Sign', icon: 'designable' },
-      { id: 'sign-static', name: 'Static Sign', icon: 'static' }
-    ]
-  };
+  const allLevels = useMemo(() => safeArray(garage?.levels), [garage]);
 
-  const levelDevices = level.devices || [];
-  const cameras = levelDevices.filter(d => d.type.startsWith('cam-'));
-  const sensors = levelDevices.filter(d => d.type.startsWith('sensor-'));
-  const signs = levelDevices.filter(d => d.type.startsWith('sign-'));
+  // Address
+  const fullAddress = useMemo(() => {
+    if (!garage) return 'No address configured';
+    const parts = [
+      sanitizeString(garage.address),
+      sanitizeString(garage.city),
+      sanitizeString(garage.state),
+      sanitizeString(garage.zip)
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(', ') : 'No address configured';
+  }, [garage]);
 
-  const allLevels = garage?.levels || [];
+  // Level devices
+  const levelDevices = useMemo(() => safeArray(level?.devices), [level]);
+  const cameras = useMemo(() => levelDevices.filter(d => d.type?.startsWith('cam-')), [levelDevices]);
+  const sensors = useMemo(() => levelDevices.filter(d => d.type?.startsWith('sensor-')), [levelDevices]);
+  const signs = useMemo(() => levelDevices.filter(d => d.type?.startsWith('sign-')), [levelDevices]);
 
-  // Fetch weather data based on garage address
-  useEffect(() => {
-    const fetchWeather = async () => {
-      if (!garage?.address) return;
+  // Stats
+  const stats = useMemo(() => ({
+    spots: safeNumber(level?.totalSpots, 0),
+    cameras: cameras.length,
+    sensors: sensors.length,
+    signs: signs.length
+  }), [level, cameras, sensors, signs]);
 
-      setWeatherLoading(true);
-      try {
-        // First, geocode the address to get coordinates
-        const geocodeResponse = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(garage.address)}&format=json&limit=1`
-        );
-        const geocodeData = await geocodeResponse.json();
+  // Level navigation
+  const currentLevelIndex = useMemo(() => allLevels.findIndex(l => l?.id === selectedLevelId), [allLevels, selectedLevelId]);
+  const prevLevel = allLevels[currentLevelIndex - 1];
+  const nextLevel = allLevels[currentLevelIndex + 1];
 
-        if (geocodeData && geocodeData.length > 0) {
-          const { lat, lon } = geocodeData[0];
+  // Handlers
+  const toggleMode = useCallback(() => {
+    if (!mountedRef.current) return;
+    setMode(mode === 'dark' ? 'light' : 'dark');
+  }, [mode, setMode]);
 
-          // Fetch weather data from Open-Meteo API (no API key required)
-          const weatherResponse = await fetch(
-            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph`
-          );
-          const weatherInfo = await weatherResponse.json();
-
-          if (weatherInfo && weatherInfo.current) {
-            setWeatherData({
-              temperature: Math.round(weatherInfo.current.temperature_2m),
-              humidity: weatherInfo.current.relative_humidity_2m,
-              windSpeed: Math.round(weatherInfo.current.wind_speed_10m),
-              weatherCode: weatherInfo.current.weather_code,
-              lat,
-              lon
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching weather:', error);
-      } finally {
-        setWeatherLoading(false);
-      }
-    };
-
-    fetchWeather();
-  }, [garage?.address]);
-
-  // Get weather icon based on weather code
-  const getWeatherIcon = (code) => {
-    if (code === 0) return '☀️'; // Clear sky
-    if (code <= 3) return '⛅'; // Partly cloudy
-    if (code <= 48) return '🌫️'; // Fog
-    if (code <= 67) return '🌧️'; // Rain
-    if (code <= 77) return '🌨️'; // Snow
-    if (code <= 82) return '🌦️'; // Rain showers
-    if (code <= 86) return '🌨️'; // Snow showers
-    return '⛈️'; // Thunderstorm
-  };
-
-  // Get flow destination options based on direction
-  const getFlowOptions = (direction) => {
-    const options = [];
-    if (direction === 'in') {
-      options.push({ value: 'garage-entry', label: '🚗 Entering Garage' });
-      allLevels.filter(l => l.id !== selectedLevelId).forEach(l => {
-        options.push({ value: l.id, label: `From ${l.name}` });
-      });
-    } else {
-      options.push({ value: 'garage-exit', label: '🚗 Exiting Garage' });
-      allLevels.filter(l => l.id !== selectedLevelId).forEach(l => {
-        options.push({ value: l.id, label: `To ${l.name}` });
-      });
+  const handleLevelChange = useCallback((direction) => {
+    if (direction === 'prev' && prevLevel) {
+      setSelectedLevelId(prevLevel.id);
+    } else if (direction === 'next' && nextLevel) {
+      setSelectedLevelId(nextLevel.id);
     }
+  }, [prevLevel, nextLevel, setSelectedLevelId]);
+
+  const getDeviceIcon = useCallback((type) => {
+    if (type?.startsWith('cam-')) {
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="3" />
+        </svg>
+      );
+    }
+    if (type?.startsWith('sign-')) {
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+        </svg>
+      );
+    }
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M12 2v20M2 12h20" />
+      </svg>
+    );
+  }, []);
+
+  const getFlowOptions = useCallback((direction) => {
+    const options = [
+      { value: 'garage-entry', label: 'Street / External' },
+      { value: 'garage-exit', label: 'Exit to Street' }
+    ];
+    allLevels.forEach(l => {
+      if (l && l.id !== selectedLevelId) {
+        options.push({ value: `level-${l.id}`, label: l.name });
+      }
+    });
     return options;
-  };
+  }, [allLevels, selectedLevelId]);
 
-  const handleNewDeviceImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setNewDevice({ ...newDevice, viewImage: event.target.result });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+  const handleNewDeviceImageUpload = useCallback((e) => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setNewDevice(prev => ({ ...prev, viewImage: event.target.result }));
+    };
+    reader.readAsDataURL(file);
+  }, []);
 
-  const addDevice = () => {
-    if (!newDevice.type || !newDevice.name) return;
+  const resetNewDevice = useCallback(() => {
+    setCameraFormStep(1);
+    setActiveStreamTab(1);
+    setNewDevice({
+      type: '',
+      hardwareType: '',
+      name: '',
+      stream1: {
+        ipAddress: '',
+        port: '',
+        direction: 'in',
+        rotation: 0,
+        flowDestination: 'garage-entry',
+        viewImage: null,
+        externalUrl: ''
+      },
+      stream2: {
+        ipAddress: '',
+        port: '',
+        direction: 'in',
+        rotation: 0,
+        flowDestination: 'garage-entry',
+        viewImage: null,
+        externalUrl: ''
+      },
+      ipAddress: '',
+      port: '',
+      direction: 'in',
+      rotation: 0,
+      flowDestination: 'garage-entry',
+      viewImage: null,
+      previewUrl: '',
+      displayMapping: [],
+      overrideState: 'auto',
+      serialAddress: '',
+      spotNumber: '',
+      parkingType: 'regular',
+      sensorImage: null,
+      externalUrl: ''
+    });
+  }, []);
 
+  const addDevice = useCallback(() => {
+    if (!newDevice.name.trim()) return;
+    const deviceToAdd = {
+      id: Date.now(),
+      ...newDevice,
+      type: newDevice.type || (activeTab === 'sensors' ? 'sensor-space' : activeTab === 'cameras' ? 'cam-fli' : 'sign-led'),
+      x: 100 + Math.random() * 200,
+      y: 100 + Math.random() * 200
+    };
     const updatedGarages = garages.map(g => {
-      if (g.id === selectedGarageId) {
-        return {
-          ...g,
-          levels: g.levels.map(l => {
-            if (l.id === selectedLevelId) {
-              const isCamera = newDevice.type.startsWith('cam-');
-              const isSensor = newDevice.type.startsWith('sensor-');
-              const isSign = newDevice.type.startsWith('sign-');
-              const isDesignableSign = newDevice.type === 'sign-designable';
-              const isStaticSign = newDevice.type === 'sign-static';
-              const isSpaceSensor = newDevice.type === 'sensor-space';
-              const device = {
-                id: `device-${Date.now()}`,
-                type: newDevice.type,
-                name: newDevice.name,
-                ipAddress: newDevice.ipAddress,
-                port: isSign ? (newDevice.port || (isStaticSign ? '10001' : '80')) : undefined,
-                direction: isCamera ? newDevice.direction : undefined,
-                rotation: isCamera ? (newDevice.rotation || 0) : undefined,
-                flowDestination: isCamera ? newDevice.flowDestination : undefined,
-                viewImage: isCamera ? newDevice.viewImage : undefined,
-                // External URL for cameras and signs
-                externalUrl: (isCamera || isSign) ? newDevice.externalUrl : undefined,
-                // Sign-specific fields
-                previewUrl: isDesignableSign ? newDevice.previewUrl : undefined,
-                displayMapping: isStaticSign ? (newDevice.displayMapping.length > 0 ? newDevice.displayMapping : [selectedLevelId]) : undefined,
-                overrideState: isSign ? 'auto' : undefined,
-                displayStatus: isStaticSign ? 'OPEN' : undefined,
-                // Sensor-specific fields
-                serialAddress: isSpaceSensor ? newDevice.serialAddress : undefined,
-                spotNumber: isSpaceSensor ? newDevice.spotNumber : undefined,
-                parkingType: isSpaceSensor ? newDevice.parkingType : undefined,
-                sensorImage: isSpaceSensor ? newDevice.sensorImage : undefined,
-                garageName: isSpaceSensor ? garage.name : undefined,
-                levelName: isSpaceSensor ? level.name : undefined,
-                x: 150 + Math.random() * 200,
-                y: 150 + Math.random() * 200
-              };
-              return {
-                ...l,
-                devices: [...(l.devices || []), device]
-              };
-            }
-            return l;
-          })
-        };
-      }
-      return g;
+      if (g.id !== selectedGarageId) return g;
+      return {
+        ...g,
+        levels: safeArray(g.levels).map(l => {
+          if (l.id !== selectedLevelId) return l;
+          return { ...l, devices: [...safeArray(l.devices), deviceToAdd] };
+        })
+      };
     });
     setGarages(updatedGarages);
-    setNewDevice({ type: '', name: '', ipAddress: '', port: '', direction: 'in', rotation: 0, flowDestination: 'garage-entry', viewImage: null, previewUrl: '', displayMapping: [], overrideState: 'auto', serialAddress: '', spotNumber: '', parkingType: 'regular', sensorImage: null, externalUrl: '' });
     setShowAddForm(false);
-  };
+    resetNewDevice();
+  }, [newDevice, activeTab, garages, selectedGarageId, selectedLevelId, setGarages, resetNewDevice]);
 
-  // Export PDF with all levels - Premium professional design
-  const exportLayoutPDF = async () => {
+  // Helper to update stream settings
+  const updateStream = useCallback((streamNum, field, value) => {
+    const streamKey = streamNum === 1 ? 'stream1' : 'stream2';
+    setNewDevice(prev => ({
+      ...prev,
+      [streamKey]: {
+        ...prev[streamKey],
+        [field]: value
+      }
+    }));
+  }, []);
+
+  // ========================= PDF EXPORT =========================
+
+  const exportLayoutPDF = useCallback(async () => {
+    if (!garage) return;
+
     const pdf = new jsPDF({
       orientation: 'landscape',
       unit: 'pt',
@@ -230,37 +375,24 @@ const EditorView = () => {
 
     for (let levelIndex = 0; levelIndex < garage.levels.length; levelIndex++) {
       const currentLevel = garage.levels[levelIndex];
+      if (levelIndex > 0) pdf.addPage();
 
-      if (levelIndex > 0) {
-        pdf.addPage();
-      }
-
-      // === BACKGROUND - Subtle gradient effect ===
-      // Main dark background
+      // Background
       pdf.setFillColor(18, 20, 28);
       pdf.rect(0, 0, pageWidth, pageHeight, 'F');
 
-      // Subtle vignette overlay at edges
-      pdf.setFillColor(12, 14, 20);
-      pdf.rect(0, 0, pageWidth, 8, 'F');
-      pdf.rect(0, pageHeight - 8, pageWidth, 8, 'F');
-
-      // === HEADER - Modern sleek design ===
+      // Header
       const headerHeight = 55;
-
-      // Header background with subtle gradient
       pdf.setFillColor(28, 32, 42);
       pdf.rect(0, 0, pageWidth, headerHeight, 'F');
-
-      // Accent line under header
       pdf.setFillColor(59, 130, 246);
       pdf.rect(0, headerHeight - 2, pageWidth, 2, 'F');
 
-      // Logo/Brand area indicator
+      // Brand accent
       pdf.setFillColor(59, 130, 246);
       pdf.roundedRect(20, 12, 4, 30, 2, 2, 'F');
 
-      // Garage name - Large bold
+      // Garage name
       pdf.setTextColor(255, 255, 255);
       pdf.setFontSize(22);
       pdf.setFont('helvetica', 'bold');
@@ -276,163 +408,98 @@ const EditorView = () => {
       pdf.setFont('helvetica', 'bold');
       pdf.text(levelText, pageWidth - levelTextWidth / 2 - 20, 33, { align: 'center' });
 
-      // === STATS BAR - Clean pill design ===
-      const statsY = headerHeight + 12;
-      const levelDevices = currentLevel.devices || [];
-      const cameraCount = levelDevices.filter(d => d.type.startsWith('cam-')).length;
-      const sensorCount = levelDevices.filter(d => d.type.startsWith('sensor-')).length;
-      const signCount = levelDevices.filter(d => d.type.startsWith('sign-')).length;
-
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'normal');
-
-      let statsX = 20;
-      const drawStatPill = (label, value, color) => {
-        const text = `${label}: ${value}`;
-        const textW = pdf.getTextWidth(text) + 16;
-        pdf.setFillColor(...color);
-        pdf.roundedRect(statsX, statsY, textW, 20, 10, 10, 'F');
-        pdf.setTextColor(255, 255, 255);
-        pdf.text(text, statsX + 8, statsY + 14);
-        statsX += textW + 8;
-      };
-
-      drawStatPill('Spots', currentLevel.totalSpots || 0, [55, 65, 81]);
-      drawStatPill('EV', currentLevel.evSpots || 0, [22, 101, 52]);
-      drawStatPill('ADA', currentLevel.adaSpots || 0, [88, 28, 135]);
-      drawStatPill('Cameras', cameraCount, [30, 64, 175]);
-      drawStatPill('Sensors', sensorCount, [161, 98, 7]);
-      drawStatPill('Signs', signCount, [21, 128, 61]);
-
-      // Date/time on right
-      pdf.setFillColor(40, 44, 52);
-      const dateText = new Date().toLocaleDateString('en-US', {
-        weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
-        hour: '2-digit', minute: '2-digit'
-      });
-      const dateW = pdf.getTextWidth(dateText) + 16;
-      pdf.roundedRect(pageWidth - dateW - 20, statsY, dateW, 20, 10, 10, 'F');
-      pdf.setTextColor(160, 170, 180);
-      pdf.text(dateText, pageWidth - dateW / 2 - 20, statsY + 14, { align: 'center' });
-
-      // === MAIN CANVAS AREA ===
-      const canvasMargin = 20;
-      const canvasY = statsY + 35;
-      const legendHeight = 50;
-      const canvasHeight = pageHeight - canvasY - legendHeight - 25;
+      // Canvas area
+      const layoutElements = safeArray(currentLevel.layoutElements);
+      const levelDevicesPdf = safeArray(currentLevel.devices);
+      const canvasMargin = 32;
+      const legendHeight = 36;
+      const canvasY = headerHeight + 20;
       const canvasWidth = pageWidth - canvasMargin * 2;
+      const canvasHeight = pageHeight - canvasY - legendHeight - 20;
 
-      // Canvas container with subtle border
-      pdf.setFillColor(22, 24, 32);
-      pdf.setDrawColor(40, 45, 55);
+      // Canvas container
+      pdf.setFillColor(22, 26, 36);
+      pdf.setDrawColor(38, 44, 58);
       pdf.setLineWidth(1);
       pdf.roundedRect(canvasMargin, canvasY, canvasWidth, canvasHeight, 8, 8, 'FD');
 
-      // Inner canvas area
-      const innerPad = 8;
-      pdf.setFillColor(16, 18, 26);
-      pdf.roundedRect(canvasMargin + innerPad, canvasY + innerPad,
-        canvasWidth - innerPad * 2, canvasHeight - innerPad * 2, 4, 4, 'F');
-
-      // Background image if exists
-      if (currentLevel.bgImage) {
-        try {
-          pdf.addImage(currentLevel.bgImage, 'JPEG',
-            canvasMargin + innerPad, canvasY + innerPad,
-            canvasWidth - innerPad * 2, canvasHeight - innerPad * 2);
-        } catch (e) { /* Continue on error */ }
-      }
-
-      // === CALCULATE BOUNDS ===
-      const layoutElements = currentLevel.layoutElements || [];
+      // Calculate bounds for scaling
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       let hasContent = false;
 
-      // Get element bounds accounting for rotation
       const getElementBounds = (el) => {
         const rotation = el.rotation || 0;
         const isRotated90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
         let w, h;
-
         switch (el.type) {
           case 'lane': {
+            const laneW = el.width || 60;
+            const laneL = el.length || 120;
             const isVertical = el.direction === 'up' || el.direction === 'down';
-            w = isVertical ? (el.width || 60) : (el.length || 200);
-            h = isVertical ? (el.length || 200) : (el.width || 60);
+            w = isVertical ? laneW : laneL;
+            h = isVertical ? laneL : laneW;
             break;
           }
-          case 'spot': {
-            w = el.width || 40;
-            h = el.height || 60;
-            // Swap dimensions if rotated 90 degrees
-            if (isRotated90) {
-              [w, h] = [h, w];
-            }
+          case 'curve':
+            w = (el.width || 60) + 20;
+            h = el.height || 120;
             break;
-          }
-          case 'entrance': {
-            w = el.width || 80;
-            h = 30;
-            if (isRotated90) {
-              [w, h] = [h, w];
-            }
+          case 'spot':
+            w = isRotated90 ? (el.height || 60) : (el.width || 40);
+            h = isRotated90 ? (el.width || 40) : (el.height || 60);
             break;
-          }
-          case 'curve': w = (el.width || 60) + 20; h = el.height || 120; break;
-          case 'ramp': {
-            w = el.width || 60;
-            h = el.length || 100;
-            if (isRotated90) {
-              [w, h] = [h, w];
-            }
+          case 'entrance':
+            w = isRotated90 ? 16 : (el.width || 80);
+            h = isRotated90 ? (el.width || 80) : 16;
             break;
-          }
-          default: w = el.width || 60; h = el.height || 60;
+          case 'ramp':
+            w = isRotated90 ? (el.height || 100) : (el.width || 60);
+            h = isRotated90 ? (el.width || 60) : (el.height || 100);
+            break;
+          default:
+            w = 40;
+            h = 40;
         }
-        return { w, h };
+        return { minX: el.x - w / 2, minY: el.y - h / 2, maxX: el.x + w / 2, maxY: el.y + h / 2 };
       };
 
       layoutElements.forEach(el => {
+        const bounds = getElementBounds(el);
+        minX = Math.min(minX, bounds.minX);
+        minY = Math.min(minY, bounds.minY);
+        maxX = Math.max(maxX, bounds.maxX);
+        maxY = Math.max(maxY, bounds.maxY);
         hasContent = true;
-        const { w, h } = getElementBounds(el);
-        minX = Math.min(minX, el.x - w / 2);
-        minY = Math.min(minY, el.y - h / 2);
-        maxX = Math.max(maxX, el.x + w / 2);
-        maxY = Math.max(maxY, el.y + h / 2);
       });
 
-      levelDevices.forEach(d => {
+      levelDevicesPdf.forEach(device => {
+        minX = Math.min(minX, device.x - 20);
+        minY = Math.min(minY, device.y - 20);
+        maxX = Math.max(maxX, device.x + 20);
+        maxY = Math.max(maxY, device.y + 20);
         hasContent = true;
-        minX = Math.min(minX, d.x - 40);
-        minY = Math.min(minY, d.y - 40);
-        maxX = Math.max(maxX, d.x + 40);
-        maxY = Math.max(maxY, d.y + 40);
       });
 
-      if (!hasContent) { minX = 0; minY = 0; maxX = 800; maxY = 600; }
+      if (!hasContent) {
+        minX = 0; minY = 0; maxX = 800; maxY = 600;
+      }
 
-      const padding = 30;
-      minX -= padding; minY -= padding; maxX += padding; maxY += padding;
+      const contentWidth = maxX - minX;
+      const contentHeight = maxY - minY;
+      const innerPad = 16;
+      const availableWidth = canvasWidth - innerPad * 2;
+      const availableHeight = canvasHeight - innerPad * 2;
+      const scale = Math.min(availableWidth / contentWidth, availableHeight / contentHeight, 1.2);
+      const offsetX = canvasMargin + innerPad + (availableWidth - contentWidth * scale) / 2 - minX * scale;
+      const offsetY = canvasY + innerPad + (availableHeight - contentHeight * scale) / 2 - minY * scale;
 
-      const contentW = maxX - minX;
-      const contentH = maxY - minY;
-      const drawableW = canvasWidth - innerPad * 2 - 20;
-      const drawableH = canvasHeight - innerPad * 2 - 20;
-      const scale = Math.min(drawableW / contentW, drawableH / contentH);
-
-      const scaledW = contentW * scale;
-      const scaledH = contentH * scale;
-      const offsetX = canvasMargin + innerPad + 10 + (drawableW - scaledW) / 2 - minX * scale;
-      const offsetY = canvasY + innerPad + 10 + (drawableH - scaledH) / 2 - minY * scale;
-
-      // === DRAW ELEMENTS ===
+      // Draw elements
       const lanes = layoutElements.filter(el => el.type === 'lane');
       const curves = layoutElements.filter(el => el.type === 'curve');
       const spots = layoutElements.filter(el => el.type === 'spot');
       const entrances = layoutElements.filter(el => el.type === 'entrance');
-      const ramps = layoutElements.filter(el => el.type === 'ramp');
 
-      // --- LANES ---
+      // Lanes
       lanes.forEach(el => {
         const x = offsetX + el.x * scale;
         const y = offsetY + el.y * scale;
@@ -440,15 +507,11 @@ const EditorView = () => {
         const laneW = (isVertical ? (el.width || 60) : (el.length || 120)) * scale;
         const laneH = (isVertical ? (el.length || 120) : (el.width || 60)) * scale;
 
-        // Shadow
         pdf.setFillColor(10, 12, 18);
         pdf.roundedRect(x - laneW / 2 + 2, y - laneH / 2 + 2, laneW, laneH, 4, 4, 'F');
-
-        // Lane body
         pdf.setFillColor(65, 75, 95);
         pdf.roundedRect(x - laneW / 2, y - laneH / 2, laneW, laneH, 4, 4, 'F');
 
-        // Center dashed line
         pdf.setDrawColor(120, 130, 150);
         pdf.setLineWidth(Math.max(1, 1.5 * scale));
         pdf.setLineDashPattern([6 * scale, 4 * scale], 0);
@@ -459,7 +522,6 @@ const EditorView = () => {
         }
         pdf.setLineDashPattern([], 0);
 
-        // Direction arrow
         pdf.setFillColor(140, 150, 170);
         const arrSize = Math.max(4, 6 * scale);
         const arrOffset = 12 * scale;
@@ -469,9 +531,7 @@ const EditorView = () => {
         else if (el.direction === 'down') drawTriangle(pdf, x, y + laneH / 2 - arrOffset, arrSize, 180);
       });
 
-      // --- CURVES (U-turn connectors) ---
-      // jsPDF doesn't support per-corner radii in roundedRect, so we draw a one-sided rounded
-      // shape (flat on one side, rounded on the other) using cubic bezier segments.
+      // Curves
       curves.forEach(el => {
         const x = offsetX + el.x * scale;
         const y = offsetY + el.y * scale;
@@ -479,12 +539,10 @@ const EditorView = () => {
         const curveW = w + 20 * scale;
         const curveH = (el.height || 120) * scale;
         const isRight = el.direction === 'right';
-
-        // Position matches canvas: isRight ? -w/2 : -curveW + w/2
         const left = isRight ? (x - w / 2) : (x - curveW + w / 2);
         const top = y - curveH / 2;
         const r = Math.max(0, Math.min(curveH / 2, curveW));
-        const k = 4 / 3 * (Math.SQRT2 - 1); // cubic bezier quarter-circle constant
+        const k = 4 / 3 * (Math.SQRT2 - 1);
 
         const drawOneSidedRounded = (ox, oy) => {
           const L = left + ox;
@@ -495,70 +553,41 @@ const EditorView = () => {
           const kr = k * R;
 
           if (isRight) {
-            // Flat on left, rounded on right
-            // Start at top-left
-            pdf.lines(
-              [
-                [W - R, 0],
-                // top-right quarter curve
-                [kr, 0, R, R - kr, R, R],
-                [0, H - 2 * R],
-                // bottom-right quarter curve
-                [0, kr, -R + kr, R, -R, R],
-                [-(W - R), 0],
-                [0, -H]
-              ],
-              L,
-              T,
-              [1, 1],
-              'F',
-              true
-            );
+            pdf.lines([
+              [W - R, 0],
+              [kr, 0, R, R - kr, R, R],
+              [0, H - 2 * R],
+              [0, kr, -R + kr, R, -R, R],
+              [-(W - R), 0],
+              [0, -H]
+            ], L, T, [1, 1], 'F', true);
           } else {
-            // Rounded on left, flat on right
-            // Start at top-left + radius
-            pdf.lines(
-              [
-                [W - R, 0],
-                [0, H],
-                [-(W - R), 0],
-                // bottom-left quarter curve
-                [-kr, 0, -R, -R + kr, -R, -R],
-                [0, -(H - 2 * R)],
-                // top-left quarter curve
-                [0, -kr, R - kr, -R, R, -R]
-              ],
-              L + R,
-              T,
-              [1, 1],
-              'F',
-              true
-            );
+            pdf.lines([
+              [W - R, 0],
+              [0, H],
+              [-(W - R), 0],
+              [-kr, 0, -R, -R + kr, -R, -R],
+              [0, -(H - 2 * R)],
+              [0, -kr, R - kr, -R, R, -R]
+            ], L + R, T, [1, 1], 'F', true);
           }
         };
 
-        // Shadow
         pdf.setFillColor(10, 12, 18);
         drawOneSidedRounded(2, 2);
-
-        // Curve body
         pdf.setFillColor(65, 75, 95);
         drawOneSidedRounded(0, 0);
       });
 
-      // --- SPOTS ---
+      // Spots
       spots.forEach(el => {
         const x = offsetX + el.x * scale;
         const y = offsetY + el.y * scale;
         const rotation = el.rotation || 0;
         const isRotated90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
-
-        // Swap width/height if rotated 90 degrees
         let spotW = (el.width || 40) * scale;
         let spotH = (el.height || 60) * scale;
-        if (isRotated90) {
-          [spotW, spotH] = [spotH, spotW];
-        }
+        if (isRotated90) [spotW, spotH] = [spotH, spotW];
 
         let fillColor, strokeColor, iconColor;
         if (el.spotType === 'ev') {
@@ -569,18 +598,14 @@ const EditorView = () => {
           fillColor = [30, 45, 70]; strokeColor = [59, 130, 246]; iconColor = [96, 165, 250];
         }
 
-        // Spot fill
         pdf.setFillColor(...fillColor);
         pdf.rect(x - spotW / 2, y - spotH / 2, spotW, spotH, 'F');
-
-        // Dashed border
         pdf.setDrawColor(...strokeColor);
         pdf.setLineWidth(Math.max(0.75, 1.2 * scale));
         pdf.setLineDashPattern([3 * scale, 2 * scale], 0);
         pdf.rect(x - spotW / 2, y - spotH / 2, spotW, spotH, 'D');
         pdf.setLineDashPattern([], 0);
 
-        // Icons/Numbers
         const fontSize = Math.max(6, Math.min(9, 8 * scale));
         pdf.setFontSize(fontSize);
         if (el.spotType === 'ev') {
@@ -598,166 +623,55 @@ const EditorView = () => {
         }
       });
 
-      // --- ENTRANCES ---
+      // Entrances
       entrances.forEach(el => {
         const x = offsetX + el.x * scale;
         const y = offsetY + el.y * scale;
         const rotation = el.rotation || 0;
         const isRotated90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
         const isEntry = el.direction === 'in';
-
         let entW = (el.width || 80) * scale;
         let entH = 16 * scale;
-        if (isRotated90) {
-          [entW, entH] = [entH, entW];
-        }
+        if (isRotated90) [entW, entH] = [entH, entW];
 
         const color = isEntry ? [34, 197, 94] : [239, 68, 68];
         const darkColor = isEntry ? [22, 101, 52] : [153, 27, 27];
 
-        // Shadow/glow
         pdf.setFillColor(...darkColor);
         pdf.roundedRect(x - entW / 2, y - entH / 2, entW, entH, 4, 4, 'F');
-
-        // Main bar
         pdf.setFillColor(...color);
         pdf.roundedRect(x - entW / 2 + 2, y - entH / 2 + 2, entW - 4, entH - 4, 3, 3, 'F');
-
-        // Arrow line
-        const arrowLen = (isRotated90 ? entH : entW) * 0.35;
-        pdf.setDrawColor(...color);
-        pdf.setLineWidth(Math.max(1.5, 2 * scale));
-        pdf.setLineDashPattern([4 * scale, 3 * scale], 0);
-
-        if (isRotated90) {
-          // Vertical arrow
-          if (isEntry) {
-            pdf.line(x, y - arrowLen, x, y + arrowLen);
-          } else {
-            pdf.line(x, y + arrowLen, x, y - arrowLen);
-          }
-        } else {
-          // Horizontal arrow
-          if (isEntry) {
-            pdf.line(x - arrowLen, y, x + arrowLen, y);
-          } else {
-            pdf.line(x + arrowLen, y, x - arrowLen, y);
-          }
-        }
-        pdf.setLineDashPattern([], 0);
-
-        // Arrow head direction based on rotation
-        pdf.setFillColor(...color);
-        let arrowAngle;
-        if (isRotated90) {
-          arrowAngle = isEntry ? 180 : 0;
-          drawTriangle(pdf, x, isEntry ? y + arrowLen : y - arrowLen, 5 * scale, arrowAngle);
-        } else {
-          arrowAngle = isEntry ? 90 : -90;
-          drawTriangle(pdf, isEntry ? x + arrowLen : x - arrowLen, y, 5 * scale, arrowAngle);
-        }
-
-        // Label
-        pdf.setTextColor(255, 255, 255);
-        pdf.setFontSize(Math.max(7, 9 * scale));
-        pdf.setFont('helvetica', 'bold');
-        pdf.text(isEntry ? 'ENTRY' : 'EXIT', x, y + 3 * scale, { align: 'center' });
       });
 
-      // --- RAMPS ---
-      ramps.forEach(el => {
-        const x = offsetX + el.x * scale;
-        const y = offsetY + el.y * scale;
-        const rotation = el.rotation || 0;
-        const isRotated90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
-
-        let rampW = (el.width || 60) * scale;
-        let rampH = (el.length || 100) * scale;
-        if (isRotated90) {
-          [rampW, rampH] = [rampH, rampW];
-        }
-
-        pdf.setFillColor(80, 50, 20);
-        pdf.roundedRect(x - rampW / 2, y - rampH / 2, rampW, rampH, 4, 4, 'F');
-
-        // Striped pattern - based on orientation
-        pdf.setDrawColor(120, 80, 40);
-        pdf.setLineWidth(1);
-        if (isRotated90) {
-          // Vertical stripes for horizontal ramp
-          for (let i = 0; i < rampW; i += 8 * scale) {
-            pdf.line(x - rampW / 2 + i, y - rampH / 2 + 4, x - rampW / 2 + i, y + rampH / 2 - 4);
-          }
-        } else {
-          // Horizontal stripes for vertical ramp
-          for (let i = 0; i < rampH; i += 8 * scale) {
-            pdf.line(x - rampW / 2 + 4, y - rampH / 2 + i, x + rampW / 2 - 4, y - rampH / 2 + i);
-          }
-        }
-
-        pdf.setTextColor(251, 191, 36);
-        pdf.setFontSize(Math.max(7, 9 * scale));
-        pdf.setFont('helvetica', 'bold');
-        pdf.text('RAMP', x, y + 3 * scale, { align: 'center' });
-      });
-
-      // --- DEVICES ---
-      levelDevices.forEach(device => {
+      // Devices
+      levelDevicesPdf.forEach(device => {
         const x = offsetX + device.x * scale;
         const y = offsetY + device.y * scale;
         const r = Math.max(6, 10 * scale);
 
-        // Camera view cone
-        if (device.type.startsWith('cam-')) {
-          const coneR = 50 * scale;
-          const rot = ((device.rotation || 0) - 90) * Math.PI / 180;
-          const coneAngle = 35 * Math.PI / 180;
-
-          const x1 = x + Math.cos(rot - coneAngle) * coneR;
-          const y1 = y + Math.sin(rot - coneAngle) * coneR;
-          const x2 = x + Math.cos(rot + coneAngle) * coneR;
-          const y2 = y + Math.sin(rot + coneAngle) * coneR;
-
-          pdf.setFillColor(59, 130, 246);
-          pdf.setGState(new pdf.GState({ opacity: 0.2 }));
-          pdf.triangle(x, y, x1, y1, x2, y2, 'F');
-          pdf.setGState(new pdf.GState({ opacity: 1 }));
-        }
-
-        // Device glow
         let deviceColor;
-        if (device.type.startsWith('cam-')) deviceColor = [59, 130, 246];
-        else if (device.type.startsWith('sensor-')) deviceColor = [245, 158, 11];
+        if (device.type?.startsWith('cam-')) deviceColor = [59, 130, 246];
+        else if (device.type?.startsWith('sensor-')) deviceColor = [245, 158, 11];
         else deviceColor = [34, 197, 94];
 
-        // Outer glow
         pdf.setFillColor(deviceColor[0] * 0.3, deviceColor[1] * 0.3, deviceColor[2] * 0.3);
         pdf.circle(x, y, r + 3, 'F');
-
-        // Main circle
         pdf.setFillColor(...deviceColor);
         pdf.circle(x, y, r, 'F');
-
-        // Inner highlight
         pdf.setFillColor(Math.min(255, deviceColor[0] + 60), Math.min(255, deviceColor[1] + 60), Math.min(255, deviceColor[2] + 60));
         pdf.circle(x - r * 0.2, y - r * 0.2, r * 0.35, 'F');
-
-        // White border
         pdf.setDrawColor(255, 255, 255);
         pdf.setLineWidth(1.5);
         pdf.circle(x, y, r, 'D');
 
-        // Device name
         pdf.setTextColor(200, 210, 220);
         pdf.setFontSize(Math.max(6, 8 * scale));
         pdf.setFont('helvetica', 'normal');
-        pdf.text(device.name, x, y + r + 12 * scale, { align: 'center' });
+        pdf.text(device.name || '', x, y + r + 12 * scale, { align: 'center' });
       });
 
-      // === LEGEND BAR ===
+      // Legend
       const legendY = pageHeight - legendHeight - 12;
-
-      // Legend container
       pdf.setFillColor(28, 32, 42);
       pdf.setDrawColor(45, 50, 60);
       pdf.setLineWidth(1);
@@ -765,7 +679,6 @@ const EditorView = () => {
 
       pdf.setFontSize(8);
       pdf.setFont('helvetica', 'normal');
-
       let lx = canvasMargin + 20;
       const ly = legendY + legendHeight / 2 + 3;
 
@@ -805,7 +718,7 @@ const EditorView = () => {
       drawLegendItem('EV', 'spot', [20, 60, 35], [34, 197, 94]);
       drawLegendItem('ADA', 'spot', [50, 30, 70], [168, 85, 247]);
 
-      // === PAGE FOOTER ===
+      // Page footer
       pdf.setFillColor(59, 130, 246);
       pdf.roundedRect(pageWidth / 2 - 30, pageHeight - 18, 60, 16, 8, 8, 'F');
       pdf.setTextColor(255, 255, 255);
@@ -814,898 +727,1139 @@ const EditorView = () => {
       pdf.text(`${levelIndex + 1} / ${garage.levels.length}`, pageWidth / 2, pageHeight - 7, { align: 'center' });
     }
 
-    // Save the PDF
-    pdf.save(`${garage.name.replace(/\s+/g, '_')}_Layout_${new Date().toISOString().split('T')[0]}.pdf`);
-  };
+    pdf.save(`${garage.name.replace(/\s+/g, '_')}_Layout.pdf`);
+  }, [garage]);
 
-  // Helper function to draw triangles for arrows
-  const drawTriangle = (pdf, x, y, size, rotation) => {
-    const angle = rotation * Math.PI / 180;
-    const points = [
-      { x: 0, y: -size },
-      { x: -size * 0.7, y: size * 0.5 },
-      { x: size * 0.7, y: size * 0.5 }
-    ];
+  // Guard
+  if (!garage || !level) {
+    return null;
+  }
 
-    const rotated = points.map(p => ({
-      x: x + p.x * Math.cos(angle) - p.y * Math.sin(angle),
-      y: y + p.x * Math.sin(angle) + p.y * Math.cos(angle)
-    }));
+  const garageName = sanitizeString(garage.name) || 'Property';
 
-    pdf.triangle(rotated[0].x, rotated[0].y, rotated[1].x, rotated[1].y, rotated[2].x, rotated[2].y, 'F');
-  };
-
-  const getDeviceIcon = (type) => {
-    switch (type) {
-      case 'cam-dome':
-        return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10" />
-            <circle cx="12" cy="12" r="4" />
-          </svg>
-        );
-      case 'cam-ptz':
-        return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 2v4" />
-            <circle cx="12" cy="10" r="4" />
-            <path d="M8 13l-2 6h12l-2-6" />
-            <ellipse cx="12" cy="20" rx="5" ry="2" />
-          </svg>
-        );
-      case 'cam-lpr':
-        return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 8h12l4 4v0l-4 4H4a2 2 0 01-2-2v-4a2 2 0 012-2z" />
-            <circle cx="7" cy="12" r="2" />
-            <path d="M20 12h2" />
-          </svg>
-        );
-      case 'sign-designable':
-        return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <path d="M7 8h10M7 12h10M7 16h6" />
-          </svg>
-        );
-      case 'sign-static':
-        return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="6" width="18" height="12" rx="2" />
-            <path d="M8 12h8" />
-          </svg>
-        );
-      case 'sensor-space':
-        return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="5" width="18" height="14" rx="2" />
-            <text x="12" y="15" textAnchor="middle" fontSize="10" fill="currentColor" stroke="none" fontWeight="bold">P</text>
-          </svg>
-        );
-      default:
-        return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10" />
-          </svg>
-        );
-    }
-  };
+  // ========================= RENDER =========================
 
   return (
-    <div className="editor-view">
-      {/* Header */}
-      <header className="editor-header">
-        <div className="header-left">
-          <button className="back-btn" onClick={goBack}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <div className="selector-view">
+      <header className="selector-header-modern">
+        <div className="brand-section">
+          <button
+            className="back-btn-modern"
+            onClick={goBack}
+            title="Back to Levels"
+            type="button"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
           </button>
-          <div className="breadcrumb">
-            <span className="breadcrumb-item">{garage.name}</span>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 18l6-6-6-6" />
-            </svg>
-            <select
-              className="level-dropdown"
-              value={selectedLevelId}
-              onChange={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setSelectedLevelId(e.target.value);
-                setSelectedDevice(null);
-              }}
-            >
-              {garage.levels.map(l => (
-                <option key={l.id} value={l.id}>{l.name}</option>
-              ))}
-            </select>
-          </div>
-          {garage.address && (
-            <a
-              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(garage.address)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="garage-address-link"
-              title="Open in Google Maps"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                <circle cx="12" cy="10" r="3" />
-              </svg>
-              {garage.address}
-            </a>
-          )}
+          <img
+            src="https://portal.ensightful.io/assets/img/ensight-logo.png"
+            alt="Ensight"
+            className="brand-logo-img"
+            style={{ height: 28, width: 'auto' }}
+            onError={(e) => { if (e.target) e.target.style.display = 'none'; }}
+          />
+          <span className="brand-title">Admin Console</span>
         </div>
-        <div className="header-right">
-          {/* Weather Widget */}
-          {weatherData && (
-            <div className="weather-widget">
-              <span className="weather-icon">{getWeatherIcon(weatherData.weatherCode)}</span>
-              <span className="weather-temp">{weatherData.temperature}°F</span>
-              <span className="weather-details">
-                💧 {weatherData.humidity}% · 💨 {weatherData.windSpeed} mph
-              </span>
-            </div>
-          )}
 
-          {/* Device Counts */}
-          <div className="level-stats-enhanced">
-            <div className="stat-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                <line x1="16" y1="2" x2="16" y2="6" />
-                <line x1="8" y1="2" x2="8" y2="6" />
-                <line x1="3" y1="10" x2="21" y2="10" />
-              </svg>
-              <span>{level.totalSpots || 0} spots</span>
-            </div>
-            <div className="stat-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <circle cx="12" cy="12" r="4" />
-              </svg>
-              <span>{cameras.length} cameras</span>
-            </div>
-            <div className="stat-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4" />
-              </svg>
-              <span>{sensors.length} sensors</span>
-            </div>
-            <div className="stat-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <path d="M9 12h6" />
-              </svg>
-              <span>{signs.length} signs</span>
-            </div>
-          </div>
-          <button
-            className="export-btn"
-            onClick={exportLayoutPDF}
-            title="Export layout as PDF"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <path d="M12 18v-6" />
-              <path d="M9 15l3 3 3-3" />
-            </svg>
-            Export PDF
-          </button>
-          <button
-            className={`settings-btn ${showLevelSettings ? 'active' : ''}`}
-            onClick={() => setShowLevelSettings(!showLevelSettings)}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-            Level Settings
-          </button>
+        <div className="header-right-controls">
           <button
             className="icon-btn"
-            onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}
+            onClick={toggleMode}
+            title="Toggle Theme"
+            type="button"
+            style={{
+              padding: 6,
+              borderRadius: '4px',
+              border: '1px solid var(--joy-palette-neutral-200)',
+              cursor: 'pointer',
+              background: 'transparent',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
           >
-            {mode === 'dark' ? (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="5" />
-                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-              </svg>
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-              </svg>
-            )}
+            {mode === 'dark' ? '☀️' : '🌙'}
           </button>
         </div>
       </header>
 
-      {/* Main Editor Layout */}
-      <div className="editor-layout">
-        {/* Device Palette - Left Panel */}
-        <aside className="device-palette">
-          {/* Tabs */}
-          <div className="palette-tabs">
-            <button
-              className={`palette-tab ${activeTab === 'cameras' ? 'active' : ''}`}
-              onClick={() => { setActiveTab('cameras'); setShowAddForm(false); }}
+      <div className="editor-body" style={{ 
+        flex: 1, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        overflow: 'hidden',
+        padding: '12px 16px',
+        background: theme.bg,
+        minHeight: 0
+      }}>
+        {/* Dashboard Header - Improved Layout */}
+        <div className="dashboard-header-modern" style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between',
+          padding: '16px 20px',
+          background: theme.bgElevated,
+          borderRadius: 12,
+          border: `1px solid ${theme.border}`,
+          marginBottom: 12,
+          flexShrink: 0,
+          gap: 24
+        }}>
+          {/* Left: Garage Info */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 180 }}>
+            <h1 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: theme.text }}>{garageName}</h1>
+            <a
+              href={`https://maps.google.com/?q=${encodeURIComponent(fullAddress)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ 
+                fontSize: 12, 
+                color: theme.textMuted, 
+                textDecoration: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6
+              }}
+              title="View on Google Maps"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <circle cx="12" cy="12" r="4" />
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                <circle cx="12" cy="10" r="3" />
               </svg>
-              <span className="tab-label">Cameras</span>
-              {cameras.length > 0 && <span className="tab-badge">{cameras.length}</span>}
+              {fullAddress}
+            </a>
+          </div>
+
+          {/* Center: Level Navigator */}
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 12,
+            padding: '10px 20px',
+            background: theme.bgHover,
+            borderRadius: 10,
+            border: `1px solid ${theme.borderSubtle}`
+          }}>
+            <button
+              onClick={() => handleLevelChange('prev')}
+              disabled={!prevLevel}
+              title="Previous Level"
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                border: `1px solid ${theme.borderSubtle}`,
+                background: prevLevel ? theme.bgButton : 'transparent',
+                cursor: prevLevel ? 'pointer' : 'not-allowed',
+                opacity: prevLevel ? 1 : 0.4,
+                color: theme.textSecondary,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
             </button>
+            <span style={{ 
+              fontWeight: 600, 
+              fontSize: 15,
+              minWidth: 80, 
+              textAlign: 'center',
+              color: theme.text
+            }}>{level.name}</span>
             <button
-              className={`palette-tab ${activeTab === 'signs' ? 'active' : ''}`}
-              onClick={() => { setActiveTab('signs'); setShowAddForm(false); }}
+              onClick={() => handleLevelChange('next')}
+              disabled={!nextLevel}
+              title="Next Level"
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                border: `1px solid ${theme.borderSubtle}`,
+                background: nextLevel ? theme.bgButton : 'transparent',
+                cursor: nextLevel ? 'pointer' : 'not-allowed',
+                opacity: nextLevel ? 1 : 0.4,
+                color: theme.textSecondary,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease'
+              }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <path d="M9 12h6" />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 18l6-6-6-6" />
               </svg>
-              <span className="tab-label">Signs</span>
-              {signs.length > 0 && <span className="tab-badge">{signs.length}</span>}
-            </button>
-            <button
-              className={`palette-tab ${activeTab === 'sensors' ? 'active' : ''}`}
-              onClick={() => { setActiveTab('sensors'); setShowAddForm(false); }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4" />
-              </svg>
-              <span className="tab-label">Sensors</span>
-              {sensors.length > 0 && <span className="tab-badge">{sensors.length}</span>}
             </button>
           </div>
 
-          {/* Tab Content */}
-          <div className="palette-content">
-            {/* Existing Devices List */}
-            {!showAddForm && (
-              <>
-                <div className="palette-section-header">
-                  <span>{activeTab === 'cameras' ? 'Cameras' : activeTab === 'sensors' ? 'Space Sensors' : 'Signs'} on this level</span>
+          {/* Right: Stats + Actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {/* Stats Badges */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 14px',
+                background: theme.bgButton,
+                border: `1px solid ${theme.borderSubtle}`,
+                borderRadius: 8,
+                fontSize: 13,
+                color: theme.textSecondary
+              }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                </svg>
+                <span style={{ fontWeight: 600, color: theme.text }}>{stats.spots}</span>
+                <span>Spots</span>
+              </div>
+
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 14px',
+                background: theme.bgButton,
+                border: `1px solid ${theme.borderSubtle}`,
+                borderRadius: 8,
+                fontSize: 13,
+                color: theme.textSecondary
+              }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="3" />
+                </svg>
+                <span style={{ fontWeight: 600, color: theme.text }}>{stats.cameras}</span>
+                <span>Cameras</span>
+              </div>
+
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 14px',
+                background: theme.bgButton,
+                border: `1px solid ${theme.borderSubtle}`,
+                borderRadius: 8,
+                fontSize: 13,
+                color: theme.textSecondary
+              }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2v20M2 12h20" />
+                </svg>
+                <span style={{ fontWeight: 600, color: theme.text }}>{stats.sensors}</span>
+                <span>Sensors</span>
+              </div>
+
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 14px',
+                background: theme.bgButton,
+                border: `1px solid ${theme.borderSubtle}`,
+                borderRadius: 8,
+                fontSize: 13,
+                color: theme.textSecondary
+              }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                </svg>
+                <span style={{ fontWeight: 600, color: theme.text }}>{stats.signs}</span>
+                <span>Signs</span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                onClick={exportLayoutPDF}
+                title="Export layout as PDF"
+                style={{ 
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 18px',
+                  background: '#3b82f6',
+                  border: 'none',
+                  borderRadius: 8,
+                  color: 'white',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <path d="M12 18v-6" /><path d="M9 15l3 3 3-3" />
+                </svg>
+                Export PDF
+              </button>
+
+              <button
+                onClick={() => setShowLevelSettings(true)}
+                title="Level Settings"
+                style={{ 
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 16px',
+                  background: theme.bgButton,
+                  border: `1px solid ${theme.borderSubtle}`,
+                  borderRadius: 8,
+                  color: theme.textSecondary,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+                Settings
+              </button>
+            </div>
+          </div>
+        </div>
+
+            {/* Editor Content */}
+            <div className="editor-layout-modern" style={{ 
+              display: 'flex', 
+              flex: 1, 
+              gap: 0, 
+              minHeight: 0,
+              overflow: 'hidden'
+            }}>
+                {/* Collapsible Device Palette */}
+                <aside className="device-palette-modern" style={{ 
+                  width: sidebarCollapsed ? 48 : 380,
+                  minWidth: sidebarCollapsed ? 48 : 380,
+                  flexShrink: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                  background: theme.sidebar,
+                  border: `1px solid ${theme.sidebarBorder}`,
+                  borderRadius: 0,
+                  transition: 'width 0.2s ease, min-width 0.2s ease',
+                  position: 'relative'
+                }}>
+                  {/* Collapse Toggle Button */}
                   <button
-                    className="add-device-btn"
-                    onClick={() => {
-                      // Auto-select sensor type since there's only one
-                      if (activeTab === 'sensors') {
-                        setNewDevice(prev => ({ ...prev, type: 'sensor-space', name: prev.name || 'Space Sensor' }));
-                      }
-                      setShowAddForm(true);
+                    onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                    style={{
+                      position: 'absolute',
+                      right: -12,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      width: 24,
+                      height: 48,
+                      background: theme.bgButton,
+                      border: `1px solid ${theme.borderSubtle}`,
+                      borderRadius: '0 6px 6px 0',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      zIndex: 10,
+                      color: theme.textSecondary
                     }}
+                    title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                    Add
-                  </button>
-                </div>
-
-                <div className="device-list">
-                  {activeTab === 'cameras' && cameras.length === 0 && (
-                    <div className="empty-state">
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                        <circle cx="12" cy="12" r="10" />
-                        <circle cx="12" cy="12" r="4" />
-                      </svg>
-                      <p>No cameras added yet</p>
-                      <button className="btn-add-first" onClick={() => setShowAddForm(true)}>
-                        Add your first camera
-                      </button>
-                    </div>
-                  )}
-                  {activeTab === 'sensors' && sensors.length === 0 && (
-                    <div className="empty-state">
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                        <rect x="3" y="5" width="18" height="14" rx="2" />
-                        <text x="12" y="15" textAnchor="middle" fontSize="10" fill="currentColor" fontWeight="bold">P</text>
-                      </svg>
-                      <p>No space sensors added yet</p>
-                      <button className="btn-add-first" onClick={() => {
-                        setNewDevice(prev => ({ ...prev, type: 'sensor-space', name: prev.name || 'Space Sensor' }));
-                        setShowAddForm(true);
-                      }}>
-                        Add your first sensor
-                      </button>
-                    </div>
-                  )}
-                  {activeTab === 'signs' && signs.length === 0 && (
-                    <div className="empty-state">
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                        <rect x="3" y="3" width="18" height="18" rx="2" />
-                        <path d="M9 12h6" />
-                      </svg>
-                      <p>No signs added yet</p>
-                      <button className="btn-add-first" onClick={() => setShowAddForm(true)}>
-                        Add your first sign
-                      </button>
-                    </div>
-                  )}
-
-                  {activeTab === 'cameras' && cameras.map(device => (
-                    <button
-                      key={device.id}
-                      className={`device-list-item ${selectedDevice?.id === device.id ? 'selected' : ''}`}
-                      onClick={() => setSelectedDevice(device)}
-                    >
-                      <span className="device-list-icon">{getDeviceIcon(device.type)}</span>
-                      <div className="device-list-info">
-                        <span className="device-list-name">{device.name}</span>
-                        <span className="device-list-meta">
-                          {device.direction === 'in' ? 'Inbound' : 'Outbound'}
-                          {device.rotation !== undefined && ` · ${device.rotation}°`}
-                          {device.ipAddress && ` · ${device.ipAddress}`}
-                        </span>
-                      </div>
-                      <div className="device-badges">
-                        <span className={`direction-badge ${device.direction}`}>
-                          {device.direction === 'in' ? '↓' : '↑'}
-                        </span>
-                        {device.rotation !== undefined && (
-                          <span className="facing-badge">{device.rotation}°</span>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-
-                  {activeTab === 'sensors' && sensors.map(device => (
-                    <button
-                      key={device.id}
-                      className={`device-list-item ${selectedDevice?.id === device.id ? 'selected' : ''}`}
-                      onClick={() => setSelectedDevice(device)}
-                    >
-                      <span className="device-list-icon">{getDeviceIcon(device.type)}</span>
-                      <div className="device-list-info">
-                        <span className="device-list-name">{device.name}</span>
-                        <span className="device-list-meta">
-                          {device.spotNumber && `Spot ${device.spotNumber}`}
-                          {device.parkingType && device.parkingType !== 'regular' && ` · ${device.parkingType.toUpperCase()}`}
-                          {device.serialAddress && ` · ${device.serialAddress}`}
-                        </span>
-                      </div>
-                      {device.parkingType && device.parkingType !== 'regular' && (
-                        <span className={`parking-type-badge ${device.parkingType}`}>
-                          {device.parkingType === 'ev' ? '⚡' : '♿'}
-                        </span>
-                      )}
-                    </button>
-                  ))}
-
-                  {activeTab === 'signs' && signs.map(device => (
-                    <button
-                      key={device.id}
-                      className={`device-list-item ${selectedDevice?.id === device.id ? 'selected' : ''}`}
-                      onClick={() => setSelectedDevice(device)}
-                    >
-                      <span className="device-list-icon">{getDeviceIcon(device.type)}</span>
-                      <div className="device-list-info">
-                        <span className="device-list-name">{device.name}</span>
-                        <span className="device-list-meta">
-                          {deviceTypes.signs.find(s => s.id === device.type)?.name}
-                          {device.ipAddress && ` · ${device.ipAddress}`}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {/* Add Device Form - Compact */}
-            {showAddForm && (
-              <div className="add-device-form-compact">
-                <div className="form-header-compact">
-                  <button className="back-link" onClick={() => {
-                    setShowAddForm(false);
-                    setNewDevice({ type: '', name: '', ipAddress: '', port: '', direction: 'in', rotation: 0, flowDestination: 'garage-entry', viewImage: null, previewUrl: '', displayMapping: [], overrideState: 'auto', serialAddress: '', spotNumber: '', parkingType: 'regular', sensorImage: null, externalUrl: '' });
-                  }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M19 12H5M12 19l-7-7 7-7" />
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d={sidebarCollapsed ? "M9 18l6-6-6-6" : "M15 18l-6-6 6-6"} />
                     </svg>
                   </button>
-                  <span className="form-title">Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'sensors' ? 'Space Sensor' : 'Sign'}</span>
-                </div>
 
-                <div className="form-scroll">
-                  {/* Type Selection - Hide for sensors (only one type) */}
-                  {activeTab !== 'sensors' && (
-                    <div className="form-section">
-                      <label className="form-label-small">Type</label>
-                      <div className="type-selector-compact">
-                        {deviceTypes[activeTab].map(type => (
-                          <button
-                            key={type.id}
-                            className={`type-chip ${newDevice.type === type.id ? 'selected' : ''}`}
-                            onClick={() => setNewDevice({ ...newDevice, type: type.id, name: newDevice.name || type.name })}
-                          >
-                            {getDeviceIcon(type.id)}
-                            <span>{type.name.replace(' Camera', '').replace(' Detector', '').replace(' Sensor', '').replace(' Sign', '')}</span>
+                  {/* Collapsed State - Just Icons */}
+                  {sidebarCollapsed ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0', gap: 8 }}>
+                      <button
+                        onClick={() => { setSidebarCollapsed(false); setActiveTab('cameras'); }}
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 8,
+                          border: activeTab === 'cameras' ? '1px solid #3b82f6' : '1px solid transparent',
+                          background: activeTab === 'cameras' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                          color: activeTab === 'cameras' ? '#3b82f6' : theme.textMuted,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                        title="Cameras"
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14v-4z" />
+                          <rect x="3" y="6" width="12" height="12" rx="2" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => { setSidebarCollapsed(false); setActiveTab('signs'); }}
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 8,
+                          border: activeTab === 'signs' ? '1px solid #3b82f6' : '1px solid transparent',
+                          background: activeTab === 'signs' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                          color: activeTab === 'signs' ? '#3b82f6' : theme.textMuted,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                        title="Signs"
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <rect x="2" y="4" width="20" height="12" rx="2" />
+                          <path d="M6 8h12M6 12h8" />
+                          <path d="M12 16v4" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => { setSidebarCollapsed(false); setActiveTab('sensors'); }}
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 8,
+                          border: activeTab === 'sensors' ? '1px solid #3b82f6' : '1px solid transparent',
+                          background: activeTab === 'sensors' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                          color: activeTab === 'sensors' ? '#3b82f6' : theme.textMuted,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                        title="Sensors"
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <path d="M5.636 18.364a9 9 0 010-12.728" />
+                          <path d="M8.464 15.536a5 5 0 010-7.072" />
+                          <circle cx="12" cy="12" r="2" fill="currentColor" />
+                          <path d="M15.536 8.464a5 5 0 010 7.072" />
+                          <path d="M18.364 5.636a9 9 0 010 12.728" />
+                        </svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                  <div className="palette-header-modern">
+                    <div className="palette-tabs-modern">
+                      <button
+                        className={`palette-tab-modern ${activeTab === 'cameras' ? 'active' : ''}`}
+                        onClick={() => { setActiveTab('cameras'); setShowAddForm(false); }}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14v-4z" />
+                          <rect x="3" y="6" width="12" height="12" rx="2" />
+                          <circle cx="9" cy="12" r="2" />
+                        </svg>
+                        <span className="tab-label-modern">Cameras</span>
+                      </button>
+                      <button
+                        className={`palette-tab-modern ${activeTab === 'signs' ? 'active' : ''}`}
+                        onClick={() => { setActiveTab('signs'); setShowAddForm(false); }}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <rect x="2" y="4" width="20" height="12" rx="2" />
+                          <path d="M6 8h12M6 12h8" />
+                          <path d="M12 16v4M8 20h8" />
+                        </svg>
+                        <span className="tab-label-modern">Signs</span>
+                      </button>
+                      <button
+                        className={`palette-tab-modern ${activeTab === 'sensors' ? 'active' : ''}`}
+                        onClick={() => { setActiveTab('sensors'); setShowAddForm(false); }}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <path d="M5.636 18.364a9 9 0 010-12.728" />
+                          <path d="M8.464 15.536a5 5 0 010-7.072" />
+                          <circle cx="12" cy="12" r="2" fill="currentColor" />
+                          <path d="M15.536 8.464a5 5 0 010 7.072" />
+                          <path d="M18.364 5.636a9 9 0 010 12.728" />
+                        </svg>
+                        <span className="tab-label-modern">Sensors</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="palette-content-modern">
+                    {!showAddForm ? (
+                      <>
+                        <div className="palette-title">
+                          {activeTab === 'cameras' ? 'Cameras' : activeTab === 'signs' ? 'Signs' : 'Sensors'} on {level.name}
+                        </div>
+
+                        <button
+                          className="btn-sidebar-action primary"
+                          style={{ marginBottom: 16 }}
+                          onClick={() => setShowAddForm(true)}
+                        >
+                          + Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'signs' ? 'Sign' : 'Sensor'}
+                        </button>
+
+                        <div className="device-list-modern" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {activeTab === 'cameras' && cameras.length === 0 && (
+                            <div className="sidebar-empty-state">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                                <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="4" />
+                              </svg>
+                              <p>No cameras added yet</p>
+                            </div>
+                          )}
+
+                          {activeTab === 'cameras' && cameras.map(cam => (
+                            <div key={cam.id} className="modern-device-item">
+                              <div className="device-icon-wrapper">{getDeviceIcon(cam.type)}</div>
+                              <div className="device-info-modern">
+                                <span className="device-name-modern">{cam.name}</span>
+                                <span className="device-type-modern">{cam.type}</span>
+                              </div>
+                            </div>
+                          ))}
+
+                          {activeTab === 'signs' && signs.length === 0 && (
+                            <div className="sidebar-empty-state">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                                <rect x="3" y="3" width="18" height="18" rx="2" />
+                              </svg>
+                              <p>No signs added yet</p>
+                            </div>
+                          )}
+
+                          {activeTab === 'signs' && signs.map(sign => (
+                            <div key={sign.id} className="modern-device-item">
+                              <div className="device-icon-wrapper">{getDeviceIcon(sign.type)}</div>
+                              <div className="device-info-modern">
+                                <span className="device-name-modern">{sign.name}</span>
+                                <span className="device-type-modern">{sign.type}</span>
+                              </div>
+                            </div>
+                          ))}
+
+                          {activeTab === 'sensors' && sensors.length === 0 && (
+                            <div className="sidebar-empty-state">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                                <path d="M12 2v20M2 12h20" />
+                              </svg>
+                              <p>No sensors added yet</p>
+                            </div>
+                          )}
+
+                          {activeTab === 'sensors' && sensors.map(sensor => (
+                            <div key={sensor.id} className="modern-device-item">
+                              <div className="device-icon-wrapper">{getDeviceIcon(sensor.type)}</div>
+                              <div className="device-info-modern">
+                                <span className="device-name-modern">{sensor.name}</span>
+                                <span className="device-type-modern">{sensor.spotNumber || 'Sensor'}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      /* Add Device Form */
+                      <div className="add-device-form-compact">
+                        <div className="form-header-compact">
+                          <button className="back-link" onClick={() => {
+                            if (activeTab === 'cameras' && cameraFormStep > 1) {
+                              setCameraFormStep(cameraFormStep - 1);
+                            } else {
+                              setShowAddForm(false);
+                              resetNewDevice();
+                            }
+                          }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M19 12H5M12 19l-7-7 7-7" />
+                            </svg>
                           </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                          <span className="form-title">
+                            Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'sensors' ? 'Sensor' : 'Sign'}
+                            {activeTab === 'cameras' && cameraFormStep === 1 && ' - Hardware Type'}
+                            {activeTab === 'cameras' && cameraFormStep === 2 && ' - Camera Type'}
+                            {activeTab === 'cameras' && cameraFormStep === 3 && ' - Configuration'}
+                          </span>
+                        </div>
 
-                  {/* Name & IP - Compact rows */}
-                  <div className="form-section">
-                    <div className="compact-input-row">
-                      <label>Name</label>
-                      <input
-                        type="text"
-                        placeholder={activeTab === 'cameras' ? 'Entry Cam 1' : activeTab === 'sensors' ? 'Space Sensor 1' : 'Lobby Display'}
-                        value={newDevice.name}
-                        onChange={(e) => setNewDevice({ ...newDevice, name: e.target.value })}
-                      />
-                    </div>
-                    {activeTab !== 'sensors' && (
-                      <div className="compact-input-row-inline">
-                        <div className="inline-field ip-field">
-                          <label>IP</label>
-                          <input
-                            type="text"
-                            placeholder="10.16.6.45"
-                            value={newDevice.ipAddress}
-                            onChange={(e) => setNewDevice({ ...newDevice, ipAddress: e.target.value })}
-                          />
-                        </div>
-                        <div className="inline-field port-field">
-                          <label>Port</label>
-                          <input
-                            type="text"
-                            placeholder={activeTab === 'signs' && newDevice.type === 'sign-static' ? '10001' : '80'}
-                            value={newDevice.port}
-                            onChange={(e) => setNewDevice({ ...newDevice, port: e.target.value })}
-                          />
-                        </div>
-                      </div>
-                    )}
-                    {activeTab === 'cameras' && (
-                      <div className="compact-input-row">
-                        <label>Rotation</label>
-                        <div className="rotation-inline">
-                          <input
-                            type="number"
-                            value={newDevice.rotation || 0}
-                            onChange={(e) => setNewDevice({ ...newDevice, rotation: parseFloat(e.target.value) || 0 })}
-                            min="0"
-                            max="360"
-                            step="15"
-                          />
-                          <span>°</span>
+                        <div className="form-scroll">
+                          {/* === CAMERA FORMS (Multi-step) === */}
+                          {activeTab === 'cameras' && cameraFormStep === 1 && (
+                            <div className="form-section">
+                              <label className="form-label-small">Select Hardware Type</label>
+                              <div className="type-selector-compact" style={{ flexDirection: 'column', gap: 8 }}>
+                                {deviceTypes.hardwareTypes.map(hw => (
+                                  <button
+                                    key={hw.id}
+                                    className={`type-chip hardware-type-btn ${newDevice.hardwareType === hw.id ? 'selected' : ''}`}
+                                    onClick={() => {
+                                      setNewDevice({ ...newDevice, hardwareType: hw.id });
+                                      setCameraFormStep(2);
+                                    }}
+                                    style={{ width: '100%', justifyContent: 'flex-start', padding: '12px 16px' }}
+                                  >
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      {hw.id === 'dual-lens' ? (
+                                        <>
+                                          <circle cx="8" cy="12" r="4" />
+                                          <circle cx="16" cy="12" r="4" />
+                                          <rect x="2" y="6" width="20" height="12" rx="2" strokeWidth="1.5" />
+                                        </>
+                                      ) : (
+                                        <>
+                                          <circle cx="12" cy="12" r="4" />
+                                          <path d="M4 8h16v8H4z" />
+                                        </>
+                                      )}
+                                    </svg>
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', marginLeft: 8 }}>
+                                      <span style={{ fontWeight: 600 }}>{hw.name}</span>
+                                      <span style={{ fontSize: 11, opacity: 0.7 }}>{hw.streams} stream{hw.streams > 1 ? 's' : ''}</span>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {activeTab === 'cameras' && cameraFormStep === 2 && (
+                            <div className="form-section">
+                              <label className="form-label-small">Select Camera Type</label>
+                              <div className="type-selector-compact" style={{ flexDirection: 'column', gap: 8 }}>
+                                {deviceTypes.cameras.map(type => (
+                                  <button
+                                    key={type.id}
+                                    className={`type-chip ${newDevice.type === type.id ? 'selected' : ''}`}
+                                    onClick={() => {
+                                      setNewDevice({ ...newDevice, type: type.id, name: newDevice.name || type.name });
+                                      setCameraFormStep(3);
+                                    }}
+                                    style={{ width: '100%', justifyContent: 'flex-start', padding: '12px 16px' }}
+                                  >
+                                    {getDeviceIcon(type.id)}
+                                    <span style={{ marginLeft: 8 }}>{type.name}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {activeTab === 'cameras' && cameraFormStep === 3 && (
+                            <>
+                              {/* Stream Tabs for Dual Lens */}
+                              {newDevice.hardwareType === 'dual-lens' && (
+                                <div className="stream-tabs" style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+                                  <button
+                                    className={`stream-tab ${activeStreamTab === 1 ? 'active' : ''}`}
+                                    onClick={() => setActiveStreamTab(1)}
+                                    style={{
+                                      flex: 1,
+                                      padding: '8px 12px',
+                                      border: activeStreamTab === 1 ? '2px solid #3b82f6' : `1px solid ${theme.borderSubtle}`,
+                                      background: activeStreamTab === 1 ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      color: theme.text,
+                                      fontWeight: activeStreamTab === 1 ? 600 : 400
+                                    }}
+                                  >
+                                    Stream 1
+                                  </button>
+                                  <button
+                                    className={`stream-tab ${activeStreamTab === 2 ? 'active' : ''}`}
+                                    onClick={() => setActiveStreamTab(2)}
+                                    style={{
+                                      flex: 1,
+                                      padding: '8px 12px',
+                                      border: activeStreamTab === 2 ? '2px solid #3b82f6' : `1px solid ${theme.borderSubtle}`,
+                                      background: activeStreamTab === 2 ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      color: theme.text,
+                                      fontWeight: activeStreamTab === 2 ? 600 : 400
+                                    }}
+                                  >
+                                    Stream 2
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* Stream Configuration */}
+                              {(() => {
+                                const stream = newDevice.hardwareType === 'dual-lens'
+                                  ? (activeStreamTab === 1 ? newDevice.stream1 : newDevice.stream2)
+                                  : newDevice.stream1;
+                                const updateCurrentStream = (field, value) => {
+                                  if (newDevice.hardwareType === 'dual-lens') {
+                                    updateStream(activeStreamTab, field, value);
+                                  } else {
+                                    updateStream(1, field, value);
+                                  }
+                                };
+                                const inputStyle = { 
+                                  width: '100%', 
+                                  padding: '10px 12px', 
+                                  fontSize: 14, 
+                                  borderRadius: 6, 
+                                  border: `1px solid ${theme.inputBorder}`, 
+                                  background: theme.inputBg, 
+                                  color: theme.text 
+                                };
+                                return (
+                                  <>
+                                    <div className="form-section">
+                                      <div className="form-field-stack">
+                                        <label className="form-label-small">Camera Name</label>
+                                        <input
+                                          type="text"
+                                          placeholder="Camera Name"
+                                          value={newDevice.name}
+                                          onChange={(e) => setNewDevice({ ...newDevice, name: e.target.value })}
+                                          style={inputStyle}
+                                        />
+                                      </div>
+                                      <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+                                        <div className="form-field-stack" style={{ flex: 2 }}>
+                                          <label className="form-label-small">IP Address</label>
+                                          <input
+                                            type="text"
+                                            placeholder="10.16.6.45"
+                                            value={stream.ipAddress}
+                                            onChange={(e) => updateCurrentStream('ipAddress', e.target.value)}
+                                            style={inputStyle}
+                                          />
+                                        </div>
+                                        <div className="form-field-stack" style={{ flex: 1 }}>
+                                          <label className="form-label-small">Port</label>
+                                          <input
+                                            type="text"
+                                            placeholder="80"
+                                            value={stream.port}
+                                            onChange={(e) => updateCurrentStream('port', e.target.value)}
+                                            style={inputStyle}
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="form-section" style={{ marginTop: 16 }}>
+                                      <label className="form-label-small">Traffic Flow</label>
+                                      <div className="flow-setup-compact" style={{ marginTop: 8 }}>
+                                        <div className="flow-direction-buttons">
+                                          <button
+                                            className={`flow-btn ${stream.direction === 'in' ? 'active in' : ''}`}
+                                            onClick={() => {
+                                              updateCurrentStream('direction', 'in');
+                                              updateCurrentStream('flowDestination', 'garage-entry');
+                                            }}
+                                          >
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                              <path d="M5 12h14M12 5l7 7-7 7" />
+                                            </svg>
+                                            INTO {level.name}
+                                          </button>
+                                          <button
+                                            className={`flow-btn ${stream.direction === 'out' ? 'active out' : ''}`}
+                                            onClick={() => {
+                                              updateCurrentStream('direction', 'out');
+                                              updateCurrentStream('flowDestination', 'garage-exit');
+                                            }}
+                                          >
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                              <path d="M19 12H5M12 19l-7-7 7-7" />
+                                            </svg>
+                                            OUT OF {level.name}
+                                          </button>
+                                        </div>
+                                        <div className="flow-destination-row" style={{ marginTop: 10 }}>
+                                          <span className="flow-context">
+                                            {stream.direction === 'in' ? 'Coming from:' : 'Going to:'}
+                                          </span>
+                                          <select
+                                            value={stream.flowDestination}
+                                            onChange={(e) => updateCurrentStream('flowDestination', e.target.value)}
+                                            style={{ flex: 1, padding: '8px 12px', fontSize: 13, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.inputBg, color: theme.text }}
+                                          >
+                                            {getFlowOptions(stream.direction).map(opt => (
+                                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="form-section" style={{ marginTop: 16 }}>
+                                      <div className="form-field-stack">
+                                        <label className="form-label-small">External URL (Optional)</label>
+                                        <input
+                                          type="text"
+                                          placeholder="rtsp://..."
+                                          value={stream.externalUrl}
+                                          onChange={(e) => updateCurrentStream('externalUrl', e.target.value)}
+                                          style={inputStyle}
+                                        />
+                                      </div>
+                                    </div>
+                                  </>
+                                );
+                              })()}
+
+                              <div className="form-section" style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+                                <button
+                                  className="btn-sidebar-action"
+                                  onClick={() => { setShowAddForm(false); resetNewDevice(); }}
+                                  style={{ flex: 1 }}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  className="btn-sidebar-action primary"
+                                  onClick={addDevice}
+                                  disabled={!newDevice.name.trim()}
+                                  style={{ flex: 1 }}
+                                >
+                                  Add Camera
+                                </button>
+                              </div>
+                            </>
+                          )}
+
+                          {/* === SIGNS & SENSORS FORMS (unchanged) === */}
+                          {activeTab !== 'cameras' && (
+                            <>
+                              {activeTab === 'signs' && (
+                                <div className="form-section">
+                                  <label className="form-label-small">Type</label>
+                                  <div className="type-selector-compact">
+                                    {deviceTypes.signs.map(type => (
+                                      <button
+                                        key={type.id}
+                                        className={`type-chip ${newDevice.type === type.id ? 'selected' : ''}`}
+                                        onClick={() => setNewDevice({ ...newDevice, type: type.id, name: newDevice.name || type.name })}
+                                      >
+                                        {getDeviceIcon(type.id)}
+                                        <span>{type.name.replace(' Sign', '')}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="form-section">
+                                <div className="compact-input-row">
+                                  <label>Name</label>
+                                  <input
+                                    type="text"
+                                    placeholder={activeTab === 'sensors' ? 'Space Sensor 1' : 'Lobby Display'}
+                                    value={newDevice.name}
+                                    onChange={(e) => setNewDevice({ ...newDevice, name: e.target.value })}
+                                  />
+                                </div>
+                                {activeTab === 'signs' && (
+                                  <div className="compact-input-row-inline">
+                                    <div className="inline-field ip-field">
+                                      <label>IP</label>
+                                      <input
+                                        type="text"
+                                        placeholder="10.16.6.45"
+                                        value={newDevice.ipAddress}
+                                        onChange={(e) => setNewDevice({ ...newDevice, ipAddress: e.target.value })}
+                                      />
+                                    </div>
+                                    <div className="inline-field port-field">
+                                      <label>Port</label>
+                                      <input
+                                        type="text"
+                                        placeholder="80"
+                                        value={newDevice.port}
+                                        onChange={(e) => setNewDevice({ ...newDevice, port: e.target.value })}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="form-section" style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+                                <button
+                                  className="btn-sidebar-action"
+                                  onClick={() => { setShowAddForm(false); resetNewDevice(); }}
+                                  style={{ flex: 1 }}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  className="btn-sidebar-action primary"
+                                  onClick={addDevice}
+                                  disabled={!newDevice.name.trim()}
+                                  style={{ flex: 1 }}
+                                >
+                                  Add
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     )}
                   </div>
-
-                  {/* Traffic Flow - Only for cameras */}
-                  {activeTab === 'cameras' && (
-                    <div className="form-section">
-                      <label className="form-label-small">Traffic Flow</label>
-                      <p className="flow-hint">Where are cars going when detected by this device?</p>
-
-                      <div className="flow-setup-compact">
-                        <div className="flow-direction-buttons">
-                          <button
-                            className={`flow-btn ${newDevice.direction === 'in' ? 'active in' : ''}`}
-                            onClick={() => setNewDevice({ ...newDevice, direction: 'in', flowDestination: 'garage-entry' })}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M5 12h14M12 5l7 7-7 7" />
-                            </svg>
-                            INTO {level.name}
-                          </button>
-                          <button
-                            className={`flow-btn ${newDevice.direction === 'out' ? 'active out' : ''}`}
-                            onClick={() => setNewDevice({ ...newDevice, direction: 'out', flowDestination: 'garage-exit' })}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M19 12H5M12 19l-7-7 7-7" />
-                            </svg>
-                            OUT OF {level.name}
-                          </button>
-                        </div>
-
-                        <div className="flow-destination-row">
-                          <span className="flow-context">
-                            {newDevice.direction === 'in' ? 'Coming from:' : 'Going to:'}
-                          </span>
-                          <select
-                            value={newDevice.flowDestination}
-                            onChange={(e) => setNewDevice({ ...newDevice, flowDestination: e.target.value })}
-                          >
-                            {getFlowOptions(newDevice.direction).map(opt => (
-                              <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    </div>
+                    </>
                   )}
+                </aside>
 
-                  {/* Camera View Image - Only for cameras */}
-                  {activeTab === 'cameras' && (
-                    <div className="form-section">
-                      <label className="form-label-small">Camera View (optional)</label>
-                      {newDevice.viewImage ? (
-                        <div className="image-preview-small">
-                          <img src={newDevice.viewImage} alt="Camera view preview" />
-                          <button
-                            className="remove-preview"
-                            onClick={() => setNewDevice({ ...newDevice, viewImage: null })}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M18 6L6 18M6 6l12 12" />
-                            </svg>
-                          </button>
-                        </div>
-                      ) : (
-                        <button className="add-image-btn" onClick={() => fileInputRef.current?.click()}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                            <circle cx="8.5" cy="8.5" r="1.5" />
-                            <path d="M21 15l-5-5L5 21" />
-                          </svg>
-                          Add image
-                        </button>
-                      )}
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        style={{ display: 'none' }}
-                        onChange={handleNewDeviceImageUpload}
-                      />
-                    </div>
-                  )}
+                {/* Canvas Container */}
+                <div className="canvas-container-modern" style={{
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minWidth: 0,
+                  minHeight: 0,
+                  overflow: 'hidden',
+                  background: mode === 'dark' ? '#0a0a0b' : '#f8fafc',
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 8
+                }}>
+                  <div className="canvas-toolbar">
+                    <button
+                      className={`toolbar-btn ${toolMode === 'select' ? 'active' : ''}`}
+                      onClick={() => setToolMode('select')}
+                      title="Select Tool"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /><path d="M13 13l6 6" />
+                      </svg>
+                    </button>
+                    <button
+                      className={`toolbar-btn ${toolMode === 'pan' ? 'active' : ''}`}
+                      onClick={() => setToolMode('pan')}
+                      title="Pan Tool"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M5 9l-3 3 3 3M9 5l3-3 3 3M19 9l3 3-3 3M9 19l3 3 3-3M2 12h20M12 2v20" />
+                      </svg>
+                    </button>
+                    <div className="toolbar-divider" />
+                    <button className="toolbar-btn active" title="Grid Toggle">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+                        <rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
+                      </svg>
+                    </button>
+                  </div>
 
-                  {/* External URL - for cameras and signs */}
-                  {(activeTab === 'cameras' || activeTab === 'signs') && (
-                    <div className="form-section">
-                      <label className="form-label-small">External URL (optional)</label>
-                      <div className="compact-input-row">
-                        <label>URL</label>
-                        <input
-                          type="text"
-                          placeholder="https://device-admin.local/..."
-                          value={newDevice.externalUrl}
-                          onChange={(e) => setNewDevice({ ...newDevice, externalUrl: e.target.value })}
-                        />
-                      </div>
-                      <p className="form-hint">Link to device admin panel or web interface</p>
-                    </div>
-                  )}
-
-                  {/* Designable Sign - Preview URL */}
-                  {newDevice.type === 'sign-designable' && (
-                    <div className="form-section">
-                      <label className="form-label-small">Design / Content</label>
-                      <div className="compact-input-row">
-                        <label>URL</label>
-                        <input
-                          type="text"
-                          placeholder="https://sign-preview.example.com/..."
-                          value={newDevice.previewUrl}
-                          onChange={(e) => setNewDevice({ ...newDevice, previewUrl: e.target.value })}
-                        />
-                      </div>
-                      <p className="form-hint">HTML preview URL for the sign content</p>
-                    </div>
-                  )}
-
-                  {/* Static Sign - Display Mapping */}
-                  {newDevice.type === 'sign-static' && (
-                    <div className="form-section">
-                      <label className="form-label-small">Display Mapping</label>
-                      <p className="form-hint">Select which levels this sign represents</p>
-                      <div className="display-mapping-list">
-                        {allLevels.map(lvl => (
-                          <label key={lvl.id} className="mapping-checkbox">
-                            <input
-                              type="checkbox"
-                              checked={newDevice.displayMapping.includes(lvl.id)}
-                              onChange={(e) => {
-                                const updated = e.target.checked
-                                  ? [...newDevice.displayMapping, lvl.id]
-                                  : newDevice.displayMapping.filter(id => id !== lvl.id);
-                                setNewDevice({ ...newDevice, displayMapping: updated });
-                              }}
-                            />
-                            <span className="checkbox-mark"></span>
-                            <span className="checkbox-label">{lvl.name}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Space Sensor - Specific fields */}
-                  {activeTab === 'sensors' && (
-                    <div className="form-section">
-                      <label className="form-label-small">Space Configuration</label>
-                      <div className="compact-input-row">
-                        <label>Serial</label>
-                        <input
-                          type="text"
-                          placeholder="SN-001234"
-                          value={newDevice.serialAddress}
-                          onChange={(e) => setNewDevice({ ...newDevice, serialAddress: e.target.value })}
-                        />
-                      </div>
-                      <div className="compact-input-row">
-                        <label>Spot #</label>
-                        <input
-                          type="text"
-                          placeholder="A-101"
-                          value={newDevice.spotNumber}
-                          onChange={(e) => setNewDevice({ ...newDevice, spotNumber: e.target.value })}
-                        />
-                      </div>
-                      <div className="compact-input-row">
-                        <label>Type</label>
-                        <div className="parking-type-buttons">
-                          <button
-                            className={`parking-type-btn ${newDevice.parkingType === 'regular' ? 'active' : ''}`}
-                            onClick={() => setNewDevice({ ...newDevice, parkingType: 'regular' })}
-                          >
-                            Regular
-                          </button>
-                          <button
-                            className={`parking-type-btn ev ${newDevice.parkingType === 'ev' ? 'active' : ''}`}
-                            onClick={() => setNewDevice({ ...newDevice, parkingType: 'ev' })}
-                          >
-                            EV
-                          </button>
-                          <button
-                            className={`parking-type-btn ada ${newDevice.parkingType === 'ada' ? 'active' : ''}`}
-                            onClick={() => setNewDevice({ ...newDevice, parkingType: 'ada' })}
-                          >
-                            ADA
-                          </button>
-                        </div>
-                      </div>
-                      <div className="compact-input-row">
-                        <label>Image</label>
-                        {newDevice.sensorImage ? (
-                          <div className="sensor-image-preview">
-                            <img src={newDevice.sensorImage} alt="Sensor location" />
-                            <button
-                              className="remove-preview-mini"
-                              onClick={() => setNewDevice({ ...newDevice, sensorImage: null })}
-                            >
-                              ×
-                            </button>
-                          </div>
-                        ) : (
-                          <button className="add-image-btn-mini" onClick={() => sensorImageRef.current?.click()}>
-                            + Photo
-                          </button>
-                        )}
-                        <input
-                          ref={sensorImageRef}
-                          type="file"
-                          accept="image/*"
-                          style={{ display: 'none' }}
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onload = (event) => {
-                                setNewDevice({ ...newDevice, sensorImage: event.target.result });
-                              };
-                              reader.readAsDataURL(file);
-                            }
-                            e.target.value = '';
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
+                  <MapCanvas />
                 </div>
 
-                {/* Submit - Fixed at bottom */}
-                <div className="form-footer">
-                  <button
-                    className="btn-add-device"
-                    onClick={addDevice}
-                    disabled={!newDevice.type || !newDevice.name}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                    Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'sensors' ? 'Sensor' : 'Sign'}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </aside>
-
-        {/* Canvas - Center */}
-        <main className="canvas-container">
-          <MapCanvas />
-        </main>
-
-        {/* Inspector - Right Panel (only when device selected) */}
-        {selectedDevice && (
-          <aside className="inspector-container">
-            <InspectorPanel />
-          </aside>
-        )}
+                {/* Inspector Panel */}
+                {selectedDevice && (
+                  <aside className="inspector-panel-modern">
+                    <InspectorPanel />
+                  </aside>
+                )}
+            </div>
       </div>
 
       {/* Level Settings Modal */}
-      {showLevelSettings && (
-        <div className="modal-overlay" onClick={() => setShowLevelSettings(false)}>
-          <div className="level-settings-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Level Settings</h3>
-              <button className="modal-close" onClick={() => setShowLevelSettings(false)}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              </button>
+      <Modal open={showLevelSettings} onClose={() => setShowLevelSettings(false)}>
+        <ModalDialog sx={{
+          ...MODAL_SX,
+          bgcolor: theme.bgSurface,
+          border: `1px solid ${theme.borderSubtle}`
+        }}>
+          <div style={{ padding: '16px 20px', borderBottom: `1px solid ${theme.borderSubtle}`, background: theme.bgHover }}>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: theme.text }}>Level Settings</h3>
+          </div>
+
+          <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label style={{ ...LABEL_STYLE, color: theme.textSecondary }}>Level Name</label>
+              <Input
+                size="sm"
+                value={level.name || ''}
+                onChange={(e) => {
+                  const updatedGarages = garages.map(g => {
+                    if (g.id === selectedGarageId) {
+                      return {
+                        ...g,
+                        levels: safeArray(g.levels).map(l =>
+                          l.id === selectedLevelId ? { ...l, name: e.target.value } : l
+                        )
+                      };
+                    }
+                    return g;
+                  });
+                  setGarages(updatedGarages);
+                }}
+                sx={INPUT_SX}
+              />
             </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Level Name</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={level.name || ''}
+
+            <div>
+              <label style={LABEL_STYLE}>Total Parking Spots</label>
+              <Input
+                size="sm"
+                type="number"
+                value={level.totalSpots || 0}
+                onChange={(e) => {
+                  const updatedGarages = garages.map(g => {
+                    if (g.id === selectedGarageId) {
+                      return {
+                        ...g,
+                        levels: safeArray(g.levels).map(l =>
+                          l.id === selectedLevelId ? { ...l, totalSpots: parseInt(e.target.value) || 0 } : l
+                        )
+                      };
+                    }
+                    return g;
+                  });
+                  setGarages(updatedGarages);
+                }}
+                slotProps={{ input: { min: 0 } }}
+                sx={INPUT_SX}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={LABEL_STYLE}>EV Charging Spots</label>
+                <Input
+                  size="sm"
+                  type="number"
+                  value={level.evSpots || 0}
                   onChange={(e) => {
                     const updatedGarages = garages.map(g => {
                       if (g.id === selectedGarageId) {
                         return {
                           ...g,
-                          levels: g.levels.map(l => l.id === selectedLevelId ? { ...l, name: e.target.value } : l)
+                          levels: safeArray(g.levels).map(l =>
+                            l.id === selectedLevelId ? { ...l, evSpots: parseInt(e.target.value) || 0 } : l
+                          )
                         };
                       }
                       return g;
                     });
                     setGarages(updatedGarages);
                   }}
+                  slotProps={{ input: { min: 0 } }}
+                  sx={INPUT_SX}
                 />
               </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Total Spots</label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    value={level.totalSpots || 0}
-                    onChange={(e) => {
-                      const updatedGarages = garages.map(g => {
-                        if (g.id === selectedGarageId) {
-                          return {
-                            ...g,
-                            levels: g.levels.map(l => l.id === selectedLevelId ? { ...l, totalSpots: parseInt(e.target.value) || 0 } : l)
-                          };
-                        }
-                        return g;
-                      });
-                      setGarages(updatedGarages);
-                    }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">EV Spots</label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    value={level.evSpots || 0}
-                    onChange={(e) => {
-                      const updatedGarages = garages.map(g => {
-                        if (g.id === selectedGarageId) {
-                          return {
-                            ...g,
-                            levels: g.levels.map(l => l.id === selectedLevelId ? { ...l, evSpots: parseInt(e.target.value) || 0 } : l)
-                          };
-                        }
-                        return g;
-                      });
-                      setGarages(updatedGarages);
-                    }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">ADA Spots</label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    value={level.handicapSpots || 0}
-                    onChange={(e) => {
-                      const updatedGarages = garages.map(g => {
-                        if (g.id === selectedGarageId) {
-                          return {
-                            ...g,
-                            levels: g.levels.map(l => l.id === selectedLevelId ? { ...l, handicapSpots: parseInt(e.target.value) || 0 } : l)
-                          };
-                        }
-                        return g;
-                      });
-                      setGarages(updatedGarages);
-                    }}
-                  />
-                </div>
+              <div>
+                <label style={LABEL_STYLE}>ADA/Handicap Spots</label>
+                <Input
+                  size="sm"
+                  type="number"
+                  value={level.handicapSpots || 0}
+                  onChange={(e) => {
+                    const updatedGarages = garages.map(g => {
+                      if (g.id === selectedGarageId) {
+                        return {
+                          ...g,
+                          levels: safeArray(g.levels).map(l =>
+                            l.id === selectedLevelId ? { ...l, handicapSpots: parseInt(e.target.value) || 0 } : l
+                          )
+                        };
+                      }
+                      return g;
+                    });
+                    setGarages(updatedGarages);
+                  }}
+                  slotProps={{ input: { min: 0 } }}
+                  sx={INPUT_SX}
+                />
               </div>
+            </div>
 
-              <div className="form-group">
-                <label className="form-label">Background Image</label>
-                <div className="bg-upload-area">
-                  <input
-                    type="file"
-                    onChange={(e) => {
-                      const file = e.target.files[0];
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = (event) => {
-                        const updatedGarages = garages.map(g => {
-                          if (g.id === selectedGarageId) {
-                            return {
-                              ...g,
-                              levels: g.levels.map(l => l.id === selectedLevelId ? { ...l, bgImage: event.target.result } : l)
-                            };
-                          }
-                          return g;
-                        });
-                        setGarages(updatedGarages);
-                      };
-                      reader.readAsDataURL(file);
+            <div>
+              <label style={LABEL_STYLE}>Background Image</label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  id="level-bg-upload"
+                  onChange={(e) => {
+                    const file = e.target?.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      const updatedGarages = garages.map(g => {
+                        if (g.id === selectedGarageId) {
+                          return {
+                            ...g,
+                            levels: safeArray(g.levels).map(l =>
+                              l.id === selectedLevelId ? { ...l, bgImage: event.target.result } : l
+                            )
+                          };
+                        }
+                        return g;
+                      });
+                      setGarages(updatedGarages);
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                />
+                <label
+                  htmlFor="level-bg-upload"
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: 6,
+                    border: `1px solid ${theme.borderSubtle}`,
+                    background: theme.bgButton,
+                    color: theme.text,
+                    cursor: 'pointer',
+                    fontSize: 14
+                  }}
+                >
+                  {level.bgImage ? 'Change Image' : 'Upload Image'}
+                </label>
+                {level.bgImage && (
+                  <Button
+                    size="sm"
+                    variant="soft"
+                    color="danger"
+                    onClick={() => {
+                      const updatedGarages = garages.map(g => {
+                        if (g.id === selectedGarageId) {
+                          return {
+                            ...g,
+                            levels: safeArray(g.levels).map(l =>
+                              l.id === selectedLevelId ? { ...l, bgImage: null } : l
+                            )
+                          };
+                        }
+                        return g;
+                      });
+                      setGarages(updatedGarages);
                     }}
-                    accept="image/*"
-                    style={{ display: 'none' }}
-                    id="bg-upload-modal"
-                  />
-                  {level.bgImage ? (
-                    <div className="bg-uploaded">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M20 6L9 17l-5-5" />
-                      </svg>
-                      <span>Image uploaded</span>
-                      <button
-                        className="btn-remove"
-                        onClick={() => {
-                          const updatedGarages = garages.map(g => {
-                            if (g.id === selectedGarageId) {
-                              return {
-                                ...g,
-                                levels: g.levels.map(l => l.id === selectedLevelId ? { ...l, bgImage: null } : l)
-                              };
-                            }
-                            return g;
-                          });
-                          setGarages(updatedGarages);
-                        }}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M18 6L6 18M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  ) : (
-                    <label htmlFor="bg-upload-modal" className="bg-upload-label">
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="3" width="18" height="18" rx="2" />
-                        <circle cx="8.5" cy="8.5" r="1.5" />
-                        <path d="M21 15l-5-5L5 21" />
-                      </svg>
-                      <span>Click to upload floor plan</span>
-                    </label>
-                  )}
-                </div>
+                  >
+                    Remove
+                  </Button>
+                )}
               </div>
             </div>
           </div>
-        </div>
-      )}
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', padding: '14px 20px', borderTop: '1px solid #3f3f46', background: '#27272a' }}>
+            <Button
+              size="sm"
+              variant="outlined"
+              color="neutral"
+              onClick={() => setShowLevelSettings(false)}
+              sx={{ color: '#fafafa', borderColor: '#3f3f46', '&:hover': { bgcolor: '#3f3f46' } }}
+            >
+              Close
+            </Button>
+          </div>
+        </ModalDialog>
+      </Modal>
     </div>
   );
 };

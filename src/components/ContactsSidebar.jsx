@@ -290,7 +290,7 @@ const ContactsSidebar = ({ contacts, garageName, onUpdateContacts }) => {
                 </IconButton>
             </div>
 
-            <Stack spacing={2} sx={{ flex: 1, overflowY: 'auto' }}>
+            <Stack spacing={2} sx={{ flex: 1, overflowY: 'auto', pt: 0.5 }}>
                 {safeContacts.length === 0 ? (
                     <Typography level="body-sm" sx={{ textAlign: 'center', mt: 4, color: 'neutral.700', fontStyle: 'italic' }}>
                         No contacts added.

@@ -32,15 +32,26 @@ const MapCanvas = () => {
   useEffect(() => {
     const updateSize = () => {
       if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
         setDimensions({
-          width: containerRef.current.offsetWidth,
-          height: containerRef.current.offsetHeight
+          width: rect.width || containerRef.current.offsetWidth,
+          height: rect.height || containerRef.current.offsetHeight
         });
       }
     };
     updateSize();
+    
+    // Use ResizeObserver for better resize detection
+    const resizeObserver = new ResizeObserver(updateSize);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+    
     window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+    return () => {
+      window.removeEventListener('resize', updateSize);
+      resizeObserver.disconnect();
+    };
   }, []);
 
   // Snap to grid function
@@ -383,13 +394,13 @@ const MapCanvas = () => {
     let adaAssigned = 0;
     const timestamp = Date.now();
     
-    // Entry point - at the left side
+    // Entry point - at the left side, arrow pointing right into garage
     newElements.push({
       id: `layout-${timestamp}-entry`,
       type: 'entrance',
       x: 40,
       y: margin + spotHeight + laneWidth / 2,
-      rotation: 90,
+      rotation: -90, // Arrow points right (into the garage)
       direction: 'in',
       width: 60
     });
@@ -404,9 +415,10 @@ const MapCanvas = () => {
       for (let i = 0; i < spotsPerAisleSide && spotCount < totalSpots; i++) {
         const spotX = margin + i * spotWidth + spotWidth / 2;
         
+        // Assign spot type - prioritize ADA near entrance, then EV
         let spotType = 'regular';
-        if (adaAssigned < adaSpots && aisle === 0 && i < 4) {
-          spotType = 'ada'; // ADA spots near entrance
+        if (adaAssigned < adaSpots) {
+          spotType = 'ada'; // ADA spots first
           adaAssigned++;
         } else if (evAssigned < evSpots) {
           spotType = 'ev';
@@ -489,16 +501,19 @@ const MapCanvas = () => {
     // Exit point - at the opposite end from entry
     const lastAisleIndex = aislesNeeded - 1;
     const exitY = margin + lastAisleIndex * (aisleHeight + aisleGap) + spotHeight + laneWidth / 2;
+    // Exit position and rotation based on last aisle direction
+    // If last aisle goes right, exit is on the right side pointing right (out)
+    // If last aisle goes left, exit is on the left side pointing left (out)
     const exitX = lastAisleIndex % 2 === 0 
-      ? margin + usableWidth + curveSpace + 20
-      : 40;
+      ? margin + usableWidth + curveSpace + 20  // Right side
+      : 40;  // Left side
     
     newElements.push({
       id: `layout-${timestamp}-exit`,
       type: 'entrance',
       x: exitX,
       y: exitY,
-      rotation: lastAisleIndex % 2 === 0 ? 90 : -90,
+      rotation: lastAisleIndex % 2 === 0 ? -90 : 90, // Point in direction of traffic flow out
       direction: 'out',
       width: 60
     });
@@ -569,6 +584,91 @@ const MapCanvas = () => {
     return lines;
   };
 
+  // Resize handle component for layout elements
+  // onResize callback: (newWidth, newHeight, offsetX, offsetY) - offsets are position adjustments
+  const renderResizeHandles = (element, width, height, onResize) => {
+    if (selectedLayoutElement?.id !== element.id) return null;
+    
+    const handleSize = 10;
+    const handleColor = '#3b82f6';
+    const handles = [];
+    
+    // Corner handles for width/height resize
+    // posX/posY indicate which direction to move the element center when resizing
+    const corners = [
+      { id: 'se', x: width / 2, y: height / 2, cursor: 'nwse-resize', dx: 1, dy: 1, posX: 0.5, posY: 0.5 },
+      { id: 'sw', x: -width / 2, y: height / 2, cursor: 'nesw-resize', dx: -1, dy: 1, posX: -0.5, posY: 0.5 },
+      { id: 'ne', x: width / 2, y: -height / 2, cursor: 'nesw-resize', dx: 1, dy: -1, posX: 0.5, posY: -0.5 },
+      { id: 'nw', x: -width / 2, y: -height / 2, cursor: 'nwse-resize', dx: -1, dy: -1, posX: -0.5, posY: -0.5 },
+    ];
+    
+    // Edge handles for single dimension resize
+    const edges = [
+      { id: 'e', x: width / 2, y: 0, cursor: 'ew-resize', dx: 1, dy: 0, posX: 0.5, posY: 0 },
+      { id: 'w', x: -width / 2, y: 0, cursor: 'ew-resize', dx: -1, dy: 0, posX: -0.5, posY: 0 },
+      { id: 's', x: 0, y: height / 2, cursor: 'ns-resize', dx: 0, dy: 1, posX: 0, posY: 0.5 },
+      { id: 'n', x: 0, y: -height / 2, cursor: 'ns-resize', dx: 0, dy: -1, posX: 0, posY: -0.5 },
+    ];
+    
+    [...corners, ...edges].forEach(handle => {
+      handles.push(
+        <Rect
+          key={handle.id}
+          x={handle.x - handleSize / 2}
+          y={handle.y - handleSize / 2}
+          width={handleSize}
+          height={handleSize}
+          fill={handleColor}
+          stroke="#fff"
+          strokeWidth={1}
+          cornerRadius={2}
+          draggable
+          onMouseEnter={(e) => {
+            e.target.getStage().container().style.cursor = handle.cursor;
+          }}
+          onMouseLeave={(e) => {
+            e.target.getStage().container().style.cursor = 'default';
+          }}
+          onDragMove={(e) => {
+            const node = e.target;
+            const dragDx = node.x() - (handle.x - handleSize / 2);
+            const dragDy = node.y() - (handle.y - handleSize / 2);
+            
+            // Reset handle position (it stays in place, the parent resizes)
+            node.x(handle.x - handleSize / 2);
+            node.y(handle.y - handleSize / 2);
+            
+            // Calculate new dimensions - only the dragged edge moves
+            let newWidth = width;
+            let newHeight = height;
+            let offsetX = 0;
+            let offsetY = 0;
+            
+            if (handle.dx !== 0) {
+              const widthDelta = dragDx * handle.dx;
+              newWidth = Math.max(20, width + widthDelta);
+              // Move position by half the delta so opposite edge stays fixed
+              offsetX = (widthDelta / 2) * (handle.dx > 0 ? 1 : -1);
+            }
+            if (handle.dy !== 0) {
+              const heightDelta = dragDy * handle.dy;
+              newHeight = Math.max(20, height + heightDelta);
+              // Move position by half the delta so opposite edge stays fixed
+              offsetY = (heightDelta / 2) * (handle.dy > 0 ? 1 : -1);
+            }
+            
+            onResize(newWidth, newHeight, offsetX, offsetY);
+          }}
+          onDragEnd={(e) => {
+            e.cancelBubble = true;
+          }}
+        />
+      );
+    });
+    
+    return handles;
+  };
+
   // Render entrance
   const renderEntrance = (element) => {
     const isSelected = selectedLayoutElement?.id === element.id;
@@ -621,6 +721,14 @@ const MapCanvas = () => {
           fill={isDark ? '#fff' : '#333'}
           fontStyle="bold"
         />
+        {/* Resize handles */}
+        {renderResizeHandles(element, element.width || 80, 40, (newWidth, newHeight, offsetX, offsetY) => {
+          updateLayoutElement(element.id, { 
+            width: Math.round(newWidth / 10) * 10,
+            x: element.x + offsetX,
+            y: element.y + offsetY
+          });
+        })}
       </Group>
     );
   };
@@ -681,6 +789,24 @@ const MapCanvas = () => {
           pointerWidth={12}
           dash={[8, 4]}
         />
+        {/* Resize handles */}
+        {renderResizeHandles(element, w, h, (newWidth, newHeight, offsetX, offsetY) => {
+          if (isVertical) {
+            updateLayoutElement(element.id, { 
+              width: Math.round(newWidth / 10) * 10, 
+              length: Math.round(newHeight / 10) * 10,
+              x: element.x + offsetX,
+              y: element.y + offsetY
+            });
+          } else {
+            updateLayoutElement(element.id, { 
+              length: Math.round(newWidth / 10) * 10, 
+              width: Math.round(newHeight / 10) * 10,
+              x: element.x + offsetX,
+              y: element.y + offsetY
+            });
+          }
+        })}
       </Group>
     );
   };
@@ -746,6 +872,15 @@ const MapCanvas = () => {
             y={(element.height || 60) / 2 - 15}
           />
         )}
+        {/* Resize handles */}
+        {renderResizeHandles(element, element.width || 40, element.height || 60, (newWidth, newHeight, offsetX, offsetY) => {
+          updateLayoutElement(element.id, { 
+            width: Math.round(newWidth / 5) * 5, 
+            height: Math.round(newHeight / 5) * 5,
+            x: element.x + offsetX,
+            y: element.y + offsetY
+          });
+        })}
       </Group>
     );
   };
@@ -811,6 +946,15 @@ const MapCanvas = () => {
           fill={isDark ? '#fff' : '#333'}
           fontStyle="bold"
         />
+        {/* Resize handles */}
+        {renderResizeHandles(element, element.width || 60, element.length || 100, (newWidth, newHeight, offsetX, offsetY) => {
+          updateLayoutElement(element.id, { 
+            width: Math.round(newWidth / 10) * 10, 
+            length: Math.round(newHeight / 10) * 10,
+            x: element.x + offsetX,
+            y: element.y + offsetY
+          });
+        })}
       </Group>
     );
   };
@@ -864,6 +1008,15 @@ const MapCanvas = () => {
           tension={0.4}
           listening={false}
         />
+        {/* Resize handles */}
+        {renderResizeHandles(element, curveW, h, (newWidth, newHeight, offsetX, offsetY) => {
+          updateLayoutElement(element.id, { 
+            width: Math.round((newWidth - 20) / 10) * 10, 
+            height: Math.round(newHeight / 10) * 10,
+            x: element.x + offsetX,
+            y: element.y + offsetY
+          });
+        })}
       </Group>
     );
   };
@@ -987,7 +1140,7 @@ const MapCanvas = () => {
   }
 
   return (
-    <div className="map-canvas-wrapper" ref={containerRef} style={{ overflow: 'auto' }}>
+    <div className="map-canvas-wrapper" ref={containerRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {/* Layout Toolbar */}
       <div className="layout-toolbar">
         <button
@@ -1138,42 +1291,89 @@ const MapCanvas = () => {
           </div>
           <div className="layout-props-body">
             {selectedLayoutElement.type === 'entrance' && (
-              <div className="prop-row">
-                <label>Direction</label>
-                <div className="prop-buttons">
-                  <button 
-                    className={selectedLayoutElement.direction === 'in' ? 'active' : ''}
-                    onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'in' })}
-                  >Entry</button>
-                  <button 
-                    className={selectedLayoutElement.direction === 'out' ? 'active' : ''}
-                    onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'out' })}
-                  >Exit</button>
+              <>
+                <div className="prop-row">
+                  <label>Direction</label>
+                  <div className="prop-buttons">
+                    <button 
+                      className={selectedLayoutElement.direction === 'in' ? 'active' : ''}
+                      onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'in' })}
+                    >Entry</button>
+                    <button 
+                      className={selectedLayoutElement.direction === 'out' ? 'active' : ''}
+                      onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'out' })}
+                    >Exit</button>
+                  </div>
                 </div>
-              </div>
+                <div className="prop-row size-row">
+                  <label>Size</label>
+                  <div className="size-inputs">
+                    <div className="size-field">
+                      <span>Width</span>
+                      <input 
+                        type="number" 
+                        value={selectedLayoutElement.width || 80}
+                        onChange={(e) => updateLayoutElement(selectedLayoutElement.id, { width: parseInt(e.target.value) || 80 })}
+                        min="40"
+                        max="200"
+                        step="10"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
             )}
             {selectedLayoutElement.type === 'lane' && (
-              <div className="prop-row">
-                <label>Direction</label>
-                <div className="prop-buttons direction-grid">
-                  <button 
-                    className={selectedLayoutElement.direction === 'up' ? 'active' : ''}
-                    onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'up' })}
-                  >↑</button>
-                  <button 
-                    className={selectedLayoutElement.direction === 'down' ? 'active' : ''}
-                    onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'down' })}
-                  >↓</button>
-                  <button 
-                    className={selectedLayoutElement.direction === 'left' ? 'active' : ''}
-                    onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'left' })}
-                  >←</button>
-                  <button 
-                    className={selectedLayoutElement.direction === 'right' ? 'active' : ''}
-                    onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'right' })}
-                  >→</button>
+              <>
+                <div className="prop-row">
+                  <label>Direction</label>
+                  <div className="prop-buttons direction-grid">
+                    <button 
+                      className={selectedLayoutElement.direction === 'up' ? 'active' : ''}
+                      onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'up' })}
+                    >↑</button>
+                    <button 
+                      className={selectedLayoutElement.direction === 'down' ? 'active' : ''}
+                      onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'down' })}
+                    >↓</button>
+                    <button 
+                      className={selectedLayoutElement.direction === 'left' ? 'active' : ''}
+                      onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'left' })}
+                    >←</button>
+                    <button 
+                      className={selectedLayoutElement.direction === 'right' ? 'active' : ''}
+                      onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'right' })}
+                    >→</button>
+                  </div>
                 </div>
-              </div>
+                <div className="prop-row size-row">
+                  <label>Size</label>
+                  <div className="size-inputs">
+                    <div className="size-field">
+                      <span>Width</span>
+                      <input 
+                        type="number" 
+                        value={selectedLayoutElement.width || 60}
+                        onChange={(e) => updateLayoutElement(selectedLayoutElement.id, { width: parseInt(e.target.value) || 60 })}
+                        min="30"
+                        max="200"
+                        step="10"
+                      />
+                    </div>
+                    <div className="size-field">
+                      <span>Length</span>
+                      <input 
+                        type="number" 
+                        value={selectedLayoutElement.length || 200}
+                        onChange={(e) => updateLayoutElement(selectedLayoutElement.id, { length: parseInt(e.target.value) || 200 })}
+                        min="50"
+                        max="1000"
+                        step="10"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
             )}
             {selectedLayoutElement.type === 'spot' && (
               <>
@@ -1203,44 +1403,129 @@ const MapCanvas = () => {
                     onChange={(e) => updateLayoutElement(selectedLayoutElement.id, { spotNumber: e.target.value })}
                   />
                 </div>
+                <div className="prop-row size-row">
+                  <label>Size</label>
+                  <div className="size-inputs">
+                    <div className="size-field">
+                      <span>W</span>
+                      <input 
+                        type="number" 
+                        value={selectedLayoutElement.width || 40}
+                        onChange={(e) => updateLayoutElement(selectedLayoutElement.id, { width: parseInt(e.target.value) || 40 })}
+                        min="20"
+                        max="200"
+                        step="5"
+                      />
+                    </div>
+                    <div className="size-field">
+                      <span>H</span>
+                      <input 
+                        type="number" 
+                        value={selectedLayoutElement.height || 60}
+                        onChange={(e) => updateLayoutElement(selectedLayoutElement.id, { height: parseInt(e.target.value) || 60 })}
+                        min="20"
+                        max="200"
+                        step="5"
+                      />
+                    </div>
+                  </div>
+                </div>
               </>
             )}
             {selectedLayoutElement.type === 'curve' && (
-              <div className="prop-row">
-                <label>Direction</label>
-                <div className="prop-buttons">
-                  <button 
-                    className={selectedLayoutElement.direction === 'left' ? 'active' : ''}
-                    onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'left' })}
-                  >↰ Left</button>
-                  <button 
-                    className={selectedLayoutElement.direction === 'right' ? 'active' : ''}
-                    onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'right' })}
-                  >↱ Right</button>
+              <>
+                <div className="prop-row">
+                  <label>Direction</label>
+                  <div className="prop-buttons">
+                    <button 
+                      className={selectedLayoutElement.direction === 'left' ? 'active' : ''}
+                      onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'left' })}
+                    >↰ Left</button>
+                    <button 
+                      className={selectedLayoutElement.direction === 'right' ? 'active' : ''}
+                      onClick={() => updateLayoutElement(selectedLayoutElement.id, { direction: 'right' })}
+                    >↱ Right</button>
+                  </div>
                 </div>
-              </div>
+                <div className="prop-row size-row">
+                  <label>Size</label>
+                  <div className="size-inputs">
+                    <div className="size-field">
+                      <span>Width</span>
+                      <input 
+                        type="number" 
+                        value={selectedLayoutElement.width || 60}
+                        onChange={(e) => updateLayoutElement(selectedLayoutElement.id, { width: parseInt(e.target.value) || 60 })}
+                        min="30"
+                        max="200"
+                        step="10"
+                      />
+                    </div>
+                    <div className="size-field">
+                      <span>Height</span>
+                      <input 
+                        type="number" 
+                        value={selectedLayoutElement.height || 160}
+                        onChange={(e) => updateLayoutElement(selectedLayoutElement.id, { height: parseInt(e.target.value) || 160 })}
+                        min="50"
+                        max="400"
+                        step="10"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
             )}
             {selectedLayoutElement.type === 'ramp' && (
-              <div className="prop-row">
-                <label>Target Level</label>
-                <select 
-                  value={selectedLayoutElement.targetLevel || ''}
-                  onChange={(e) => updateLayoutElement(selectedLayoutElement.id, { targetLevel: e.target.value })}
-                  style={{
-                    padding: '8px 10px',
-                    border: '1px solid var(--joy-palette-neutral-300)',
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                    background: 'var(--joy-palette-background-surface)',
-                    color: 'var(--joy-palette-neutral-800)'
-                  }}
-                >
-                  <option value="">Select level...</option>
-                  {garage?.levels?.filter(l => l.id !== selectedLevelId).map(l => (
-                    <option key={l.id} value={l.id}>{l.name}</option>
-                  ))}
-                </select>
-              </div>
+              <>
+                <div className="prop-row">
+                  <label>Target Level</label>
+                  <select 
+                    value={selectedLayoutElement.targetLevel || ''}
+                    onChange={(e) => updateLayoutElement(selectedLayoutElement.id, { targetLevel: e.target.value })}
+                    style={{
+                      padding: '8px 10px',
+                      border: '1px solid var(--joy-palette-neutral-300)',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      background: 'var(--joy-palette-background-surface)',
+                      color: 'var(--joy-palette-neutral-800)'
+                    }}
+                  >
+                    <option value="">Select level...</option>
+                    {garage?.levels?.filter(l => l.id !== selectedLevelId).map(l => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="prop-row size-row">
+                  <label>Size</label>
+                  <div className="size-inputs">
+                    <div className="size-field">
+                      <span>Width</span>
+                      <input 
+                        type="number" 
+                        value={selectedLayoutElement.width || 60}
+                        onChange={(e) => updateLayoutElement(selectedLayoutElement.id, { width: parseInt(e.target.value) || 60 })}
+                        min="30"
+                        max="200"
+                        step="10"
+                      />
+                    </div>
+                    <div className="size-field">
+                      <span>Length</span>
+                      <input 
+                        type="number" 
+                        value={selectedLayoutElement.length || 100}
+                        onChange={(e) => updateLayoutElement(selectedLayoutElement.id, { length: parseInt(e.target.value) || 100 })}
+                        min="50"
+                        max="500"
+                        step="10"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
             )}
             <div className="prop-row">
               <label>Rotation</label>
