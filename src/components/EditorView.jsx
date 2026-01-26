@@ -109,6 +109,106 @@ const EditorView = () => {
     return () => { mountedRef.current = false; };
   }, []);
 
+  // Electron: Auto-load and watch CameraHub config file
+  React.useEffect(() => {
+    if (!window.electronAPI) return;
+
+    setIsElectron(true);
+    let unsubscribe = null;
+
+    const loadConfigFromElectron = async () => {
+      try {
+        // Check if CameraHub config exists
+        const result = await window.electronAPI.readConfigFile();
+
+        if (result.success && result.content) {
+          const importedDevices = parseCameraHubConfig(result.content);
+
+          if (importedDevices.length > 0 && selectedGarageId && selectedLevelId) {
+            setGarages(prevGarages => prevGarages.map(g => {
+              if (g.id !== selectedGarageId) return g;
+              return {
+                ...g,
+                levels: safeArray(g.levels).map(l => {
+                  if (l.id !== selectedLevelId) return l;
+                  // Merge with existing devices, avoiding duplicates by name
+                  const existingNames = new Set(safeArray(l.devices).map(d => d.name));
+                  const newDevices = importedDevices.filter(d => !existingNames.has(d.name));
+                  if (newDevices.length === 0) return l;
+                  return {
+                    ...l,
+                    devices: [...safeArray(l.devices), ...newDevices]
+                  };
+                })
+              };
+            }));
+
+            setImportMessage({
+              type: 'success',
+              text: `Auto-loaded ${importedDevices.length} camera(s) from CameraHub config`
+            });
+            setTimeout(() => setImportMessage(null), 5000);
+          }
+        }
+
+        // Set up file watcher for real-time updates
+        const watchResult = await window.electronAPI.watchConfigFile();
+        if (watchResult.success) {
+          setConfigWatcherActive(true);
+
+          // Listen for file changes
+          unsubscribe = window.electronAPI.onConfigFileChanged((data) => {
+            if (!mountedRef.current) return;
+
+            try {
+              const updatedDevices = parseCameraHubConfig(data.content);
+
+              if (updatedDevices.length > 0) {
+                setGarages(prevGarages => prevGarages.map(g => {
+                  if (g.id !== selectedGarageId) return g;
+                  return {
+                    ...g,
+                    levels: safeArray(g.levels).map(l => {
+                      if (l.id !== selectedLevelId) return l;
+                      // Replace cameras with updated ones, keep non-cameras
+                      const nonCameras = safeArray(l.devices).filter(d => !d.type?.startsWith('cam-'));
+                      return {
+                        ...l,
+                        devices: [...nonCameras, ...updatedDevices]
+                      };
+                    })
+                  };
+                }));
+
+                setImportMessage({
+                  type: 'success',
+                  text: `Config updated: ${updatedDevices.length} camera(s) reloaded`
+                });
+                setTimeout(() => setImportMessage(null), 3000);
+              }
+            } catch (err) {
+              console.error('Error processing config update:', err);
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error loading config from Electron:', error);
+      }
+    };
+
+    if (selectedGarageId && selectedLevelId) {
+      loadConfigFromElectron();
+    }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+      if (window.electronAPI) {
+        window.electronAPI.unwatchConfigFile();
+        setConfigWatcherActive(false);
+      }
+    };
+  }, [selectedGarageId, selectedLevelId, setGarages]);
+
   // Safe context extraction
   const garages = safeArray(context?.garages);
   const setGarages = typeof context?.setGarages === 'function' ? context.setGarages : () => {};
@@ -148,6 +248,8 @@ const EditorView = () => {
   const [configImportType, setConfigImportType] = useState('devicesConfig'); // 'devicesConfig', 'cameraHub'
   const [importMessage, setImportMessage] = useState(null);
   const [toolMode, setToolMode] = useState('select');
+  const [isElectron, setIsElectron] = useState(false);
+  const [configWatcherActive, setConfigWatcherActive] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [cameraFormStep, setCameraFormStep] = useState(1); // 1: hardware, 2: type, 3: config
   const [activeStreamTab, setActiveStreamTab] = useState(1); // For dual lens: 1 or 2
@@ -1122,6 +1224,37 @@ const EditorView = () => {
 
             {/* Action Buttons */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* Electron Mode Indicator */}
+              {isElectron && (
+                <div
+                  title={configWatcherActive ? 'Watching C:\\Ensight\\CameraHub\\CameraHub-config.xml for changes' : 'Running in desktop mode'}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 12px',
+                    background: configWatcherActive ? 'rgba(34, 197, 94, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                    border: `1px solid ${configWatcherActive ? 'rgba(34, 197, 94, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
+                    borderRadius: 8,
+                    color: configWatcherActive ? '#22c55e' : '#3b82f6',
+                    fontSize: 12,
+                    fontWeight: 500,
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    {configWatcherActive ? (
+                      <>
+                        <circle cx="12" cy="12" r="10" />
+                        <circle cx="12" cy="12" r="3" fill="currentColor" />
+                      </>
+                    ) : (
+                      <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    )}
+                  </svg>
+                  {configWatcherActive ? 'Live Sync' : 'Desktop Mode'}
+                </div>
+              )}
+
               {/* Config Export/Import Dropdown */}
               <div style={{ position: 'relative' }}>
                 <button
