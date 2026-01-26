@@ -8,6 +8,10 @@ export default defineConfig({
   base: './',
   resolve: {
     dedupe: ['react', 'react-dom'],
+    alias: {
+      // Polyfill Node.js stream module for browser compatibility (used by xml-js)
+      stream: 'stream-browserify',
+    },
   },
   server: {
     // Handle client-side routing - serve index.html for all routes

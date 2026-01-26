@@ -5,6 +5,9 @@ const fs = require('fs');
 // Content Security Policy - stricter in production, relaxed for development HMR
 const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
 
+// Weather API domains needed for the Weather component
+const WEATHER_API_DOMAINS = 'https://api.open-meteo.com https://geocoding-api.open-meteo.com https://nominatim.openstreetmap.org';
+
 const CSP_POLICY = isDev
   ? [
       "default-src 'self'",
@@ -12,7 +15,7 @@ const CSP_POLICY = isDev
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https:",
-      "connect-src 'self' ws://localhost:* http://localhost:*",
+      `connect-src 'self' ws://localhost:* http://localhost:* ${WEATHER_API_DOMAINS}`,
     ].join('; ')
   : [
       "default-src 'self'",
@@ -20,7 +23,7 @@ const CSP_POLICY = isDev
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https:",
-      "connect-src 'self'",
+      `connect-src 'self' ${WEATHER_API_DOMAINS}`,
     ].join('; ');
 
 // Default config file paths for EnSight
