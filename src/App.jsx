@@ -5,6 +5,7 @@ import CssBaseline from '@mui/joy/CssBaseline';
 import GarageSelector from './components/GarageSelector';
 import LevelSelector from './components/LevelSelector';
 import EditorView from './components/EditorView';
+import SitePage from './components/SitePage';
 import './App.css';
 
 export const AppContext = createContext();
@@ -302,6 +303,7 @@ function AppContent() {
         {currentView === 'garages' && <GarageSelector />}
         {currentView === 'levels' && <LevelSelector />}
         {currentView === 'editor' && <EditorView />}
+        {currentView === 'site' && <SitePage />}
       </div>
     </AppContext.Provider>
   );
