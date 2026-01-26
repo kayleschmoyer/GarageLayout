@@ -77,26 +77,6 @@ const safeNumber = (val, fallback = 0) => {
 };
 const sanitizeString = (val) => safeString(val).trim();
 
-// ========================= PDF EXPORT HELPER FUNCTIONS =========================
-
-const drawTriangle = (pdf, cx, cy, size, rotation) => {
-  const angleRad = (rotation - 90) * Math.PI / 180;
-  const points = [];
-  for (let i = 0; i < 3; i++) {
-    const angle = angleRad + (i * 2 * Math.PI / 3);
-    points.push({
-      x: cx + size * Math.cos(angle),
-      y: cy + size * Math.sin(angle)
-    });
-  }
-  pdf.triangle(
-    points[0].x, points[0].y,
-    points[1].x, points[1].y,
-    points[2].x, points[2].y,
-    'F'
-  );
-};
-
 // ========================= MAIN COMPONENT =========================
 
 const EditorView = () => {
@@ -228,11 +208,10 @@ const EditorView = () => {
 
   // Stats
   const stats = useMemo(() => ({
-    spots: safeNumber(level?.totalSpots, 0),
     cameras: cameras.length,
     sensors: sensors.length,
     signs: signs.length
-  }), [level, cameras, sensors, signs]);
+  }), [cameras, sensors, signs]);
 
   // Level navigation
   const currentLevelIndex = useMemo(() => allLevels.findIndex(l => l?.id === selectedLevelId), [allLevels, selectedLevelId]);
@@ -557,7 +536,6 @@ const EditorView = () => {
       pdf.text(levelText, pageWidth - levelTextWidth / 2 - 20, 33, { align: 'center' });
 
       // Canvas area
-      const layoutElements = safeArray(currentLevel.layoutElements);
       const levelDevicesPdf = safeArray(currentLevel.devices);
       const canvasMargin = 32;
       const legendHeight = 36;
@@ -571,54 +549,9 @@ const EditorView = () => {
       pdf.setLineWidth(1);
       pdf.roundedRect(canvasMargin, canvasY, canvasWidth, canvasHeight, 8, 8, 'FD');
 
-      // Calculate bounds for scaling
+      // Calculate bounds for scaling based on devices
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       let hasContent = false;
-
-      const getElementBounds = (el) => {
-        const rotation = el.rotation || 0;
-        const isRotated90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
-        let w, h;
-        switch (el.type) {
-          case 'lane': {
-            const laneW = el.width || 60;
-            const laneL = el.length || 120;
-            const isVertical = el.direction === 'up' || el.direction === 'down';
-            w = isVertical ? laneW : laneL;
-            h = isVertical ? laneL : laneW;
-            break;
-          }
-          case 'curve':
-            w = (el.width || 60) + 20;
-            h = el.height || 120;
-            break;
-          case 'spot':
-            w = isRotated90 ? (el.height || 60) : (el.width || 40);
-            h = isRotated90 ? (el.width || 40) : (el.height || 60);
-            break;
-          case 'entrance':
-            w = isRotated90 ? 16 : (el.width || 80);
-            h = isRotated90 ? (el.width || 80) : 16;
-            break;
-          case 'ramp':
-            w = isRotated90 ? (el.height || 100) : (el.width || 60);
-            h = isRotated90 ? (el.width || 60) : (el.height || 100);
-            break;
-          default:
-            w = 40;
-            h = 40;
-        }
-        return { minX: el.x - w / 2, minY: el.y - h / 2, maxX: el.x + w / 2, maxY: el.y + h / 2 };
-      };
-
-      layoutElements.forEach(el => {
-        const bounds = getElementBounds(el);
-        minX = Math.min(minX, bounds.minX);
-        minY = Math.min(minY, bounds.minY);
-        maxX = Math.max(maxX, bounds.maxX);
-        maxY = Math.max(maxY, bounds.maxY);
-        hasContent = true;
-      });
 
       levelDevicesPdf.forEach(device => {
         minX = Math.min(minX, device.x - 20);
@@ -640,156 +573,6 @@ const EditorView = () => {
       const scale = Math.min(availableWidth / contentWidth, availableHeight / contentHeight, 1.2);
       const offsetX = canvasMargin + innerPad + (availableWidth - contentWidth * scale) / 2 - minX * scale;
       const offsetY = canvasY + innerPad + (availableHeight - contentHeight * scale) / 2 - minY * scale;
-
-      // Draw elements
-      const lanes = layoutElements.filter(el => el.type === 'lane');
-      const curves = layoutElements.filter(el => el.type === 'curve');
-      const spots = layoutElements.filter(el => el.type === 'spot');
-      const entrances = layoutElements.filter(el => el.type === 'entrance');
-
-      // Lanes
-      lanes.forEach(el => {
-        const x = offsetX + el.x * scale;
-        const y = offsetY + el.y * scale;
-        const isVertical = el.direction === 'up' || el.direction === 'down';
-        const laneW = (isVertical ? (el.width || 60) : (el.length || 120)) * scale;
-        const laneH = (isVertical ? (el.length || 120) : (el.width || 60)) * scale;
-
-        pdf.setFillColor(10, 12, 18);
-        pdf.roundedRect(x - laneW / 2 + 2, y - laneH / 2 + 2, laneW, laneH, 4, 4, 'F');
-        pdf.setFillColor(65, 75, 95);
-        pdf.roundedRect(x - laneW / 2, y - laneH / 2, laneW, laneH, 4, 4, 'F');
-
-        pdf.setDrawColor(120, 130, 150);
-        pdf.setLineWidth(Math.max(1, 1.5 * scale));
-        pdf.setLineDashPattern([6 * scale, 4 * scale], 0);
-        if (isVertical) {
-          pdf.line(x, y - laneH / 2 + 8, x, y + laneH / 2 - 8);
-        } else {
-          pdf.line(x - laneW / 2 + 8, y, x + laneW / 2 - 8, y);
-        }
-        pdf.setLineDashPattern([], 0);
-
-        pdf.setFillColor(140, 150, 170);
-        const arrSize = Math.max(4, 6 * scale);
-        const arrOffset = 12 * scale;
-        if (el.direction === 'right') drawTriangle(pdf, x + laneW / 2 - arrOffset, y, arrSize, 90);
-        else if (el.direction === 'left') drawTriangle(pdf, x - laneW / 2 + arrOffset, y, arrSize, -90);
-        else if (el.direction === 'up') drawTriangle(pdf, x, y - laneH / 2 + arrOffset, arrSize, 0);
-        else if (el.direction === 'down') drawTriangle(pdf, x, y + laneH / 2 - arrOffset, arrSize, 180);
-      });
-
-      // Curves
-      curves.forEach(el => {
-        const x = offsetX + el.x * scale;
-        const y = offsetY + el.y * scale;
-        const w = (el.width || 60) * scale;
-        const curveW = w + 20 * scale;
-        const curveH = (el.height || 120) * scale;
-        const isRight = el.direction === 'right';
-        const left = isRight ? (x - w / 2) : (x - curveW + w / 2);
-        const top = y - curveH / 2;
-        const r = Math.max(0, Math.min(curveH / 2, curveW));
-        const k = 4 / 3 * (Math.SQRT2 - 1);
-
-        const drawOneSidedRounded = (ox, oy) => {
-          const L = left + ox;
-          const T = top + oy;
-          const W = curveW;
-          const H = curveH;
-          const R = r;
-          const kr = k * R;
-
-          if (isRight) {
-            pdf.lines([
-              [W - R, 0],
-              [kr, 0, R, R - kr, R, R],
-              [0, H - 2 * R],
-              [0, kr, -R + kr, R, -R, R],
-              [-(W - R), 0],
-              [0, -H]
-            ], L, T, [1, 1], 'F', true);
-          } else {
-            pdf.lines([
-              [W - R, 0],
-              [0, H],
-              [-(W - R), 0],
-              [-kr, 0, -R, -R + kr, -R, -R],
-              [0, -(H - 2 * R)],
-              [0, -kr, R - kr, -R, R, -R]
-            ], L + R, T, [1, 1], 'F', true);
-          }
-        };
-
-        pdf.setFillColor(10, 12, 18);
-        drawOneSidedRounded(2, 2);
-        pdf.setFillColor(65, 75, 95);
-        drawOneSidedRounded(0, 0);
-      });
-
-      // Spots
-      spots.forEach(el => {
-        const x = offsetX + el.x * scale;
-        const y = offsetY + el.y * scale;
-        const rotation = el.rotation || 0;
-        const isRotated90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
-        let spotW = (el.width || 40) * scale;
-        let spotH = (el.height || 60) * scale;
-        if (isRotated90) [spotW, spotH] = [spotH, spotW];
-
-        let fillColor, strokeColor, iconColor;
-        if (el.spotType === 'ev') {
-          fillColor = [20, 60, 35]; strokeColor = [34, 197, 94]; iconColor = [74, 222, 128];
-        } else if (el.spotType === 'ada') {
-          fillColor = [50, 30, 70]; strokeColor = [168, 85, 247]; iconColor = [192, 132, 252];
-        } else {
-          fillColor = [30, 45, 70]; strokeColor = [59, 130, 246]; iconColor = [96, 165, 250];
-        }
-
-        pdf.setFillColor(...fillColor);
-        pdf.rect(x - spotW / 2, y - spotH / 2, spotW, spotH, 'F');
-        pdf.setDrawColor(...strokeColor);
-        pdf.setLineWidth(Math.max(0.75, 1.2 * scale));
-        pdf.setLineDashPattern([3 * scale, 2 * scale], 0);
-        pdf.rect(x - spotW / 2, y - spotH / 2, spotW, spotH, 'D');
-        pdf.setLineDashPattern([], 0);
-
-        const fontSize = Math.max(6, Math.min(9, 8 * scale));
-        pdf.setFontSize(fontSize);
-        if (el.spotType === 'ev') {
-          pdf.setTextColor(...iconColor);
-          pdf.setFont('helvetica', 'bold');
-          pdf.text('EV', x, y + fontSize / 3, { align: 'center' });
-        } else if (el.spotType === 'ada') {
-          pdf.setTextColor(...iconColor);
-          pdf.setFont('helvetica', 'bold');
-          pdf.text('ADA', x, y + fontSize / 3, { align: 'center' });
-        } else if (el.spotNumber) {
-          pdf.setTextColor(140, 160, 190);
-          pdf.setFont('helvetica', 'normal');
-          pdf.text(el.spotNumber, x, y + fontSize / 3, { align: 'center' });
-        }
-      });
-
-      // Entrances
-      entrances.forEach(el => {
-        const x = offsetX + el.x * scale;
-        const y = offsetY + el.y * scale;
-        const rotation = el.rotation || 0;
-        const isRotated90 = Math.abs(rotation) === 90 || Math.abs(rotation) === 270;
-        const isEntry = el.direction === 'in';
-        let entW = (el.width || 80) * scale;
-        let entH = 16 * scale;
-        if (isRotated90) [entW, entH] = [entH, entW];
-
-        const color = isEntry ? [34, 197, 94] : [239, 68, 68];
-        const darkColor = isEntry ? [22, 101, 52] : [153, 27, 27];
-
-        pdf.setFillColor(...darkColor);
-        pdf.roundedRect(x - entW / 2, y - entH / 2, entW, entH, 4, 4, 'F');
-        pdf.setFillColor(...color);
-        pdf.roundedRect(x - entW / 2 + 2, y - entH / 2 + 2, entW - 4, entH - 4, 3, 3, 'F');
-      });
 
       // Devices
       levelDevicesPdf.forEach(device => {
@@ -830,41 +613,21 @@ const EditorView = () => {
       let lx = canvasMargin + 20;
       const ly = legendY + legendHeight / 2 + 3;
 
-      const drawLegendItem = (label, type, color, secondary) => {
-        if (type === 'circle') {
-          pdf.setFillColor(...color);
-          pdf.circle(lx, ly - 1, 5, 'F');
-          pdf.setDrawColor(255, 255, 255);
-          pdf.setLineWidth(0.75);
-          pdf.circle(lx, ly - 1, 5, 'D');
-          lx += 12;
-        } else if (type === 'bar') {
-          pdf.setFillColor(...color);
-          pdf.roundedRect(lx - 2, ly - 5, 20, 10, 2, 2, 'F');
-          lx += 24;
-        } else if (type === 'spot') {
-          pdf.setFillColor(...color);
-          pdf.rect(lx - 2, ly - 6, 10, 12, 'F');
-          pdf.setDrawColor(...secondary);
-          pdf.setLineDashPattern([2, 1], 0);
-          pdf.rect(lx - 2, ly - 6, 10, 12, 'D');
-          pdf.setLineDashPattern([], 0);
-          lx += 16;
-        }
+      const drawLegendItem = (label, color) => {
+        pdf.setFillColor(...color);
+        pdf.circle(lx, ly - 1, 5, 'F');
+        pdf.setDrawColor(255, 255, 255);
+        pdf.setLineWidth(0.75);
+        pdf.circle(lx, ly - 1, 5, 'D');
+        lx += 12;
         pdf.setTextColor(170, 180, 190);
         pdf.text(label, lx, ly);
-        lx += pdf.getTextWidth(label) + 20;
+        lx += pdf.getTextWidth(label) + 24;
       };
 
-      drawLegendItem('Camera', 'circle', [59, 130, 246]);
-      drawLegendItem('Sensor', 'circle', [245, 158, 11]);
-      drawLegendItem('Sign', 'circle', [34, 197, 94]);
-      drawLegendItem('Entry', 'bar', [34, 197, 94]);
-      drawLegendItem('Exit', 'bar', [239, 68, 68]);
-      drawLegendItem('Lane', 'bar', [65, 75, 95]);
-      drawLegendItem('Regular', 'spot', [30, 45, 70], [59, 130, 246]);
-      drawLegendItem('EV', 'spot', [20, 60, 35], [34, 197, 94]);
-      drawLegendItem('ADA', 'spot', [50, 30, 70], [168, 85, 247]);
+      drawLegendItem('Camera', [59, 130, 246]);
+      drawLegendItem('Sensor', [245, 158, 11]);
+      drawLegendItem('Sign', [34, 197, 94]);
 
       // Page footer
       pdf.setFillColor(59, 130, 246);
@@ -1049,24 +812,6 @@ const EditorView = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             {/* Stats Badges */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '8px 14px',
-                background: theme.bgButton,
-                border: `1px solid ${theme.borderSubtle}`,
-                borderRadius: 8,
-                fontSize: 13,
-                color: theme.textSecondary
-              }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                </svg>
-                <span style={{ fontWeight: 600, color: theme.text }}>{stats.spots}</span>
-                <span>Spots</span>
-              </div>
-
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -1908,82 +1653,6 @@ const EditorView = () => {
                 }}
                 sx={INPUT_SX}
               />
-            </div>
-
-            <div>
-              <label style={LABEL_STYLE}>Total Parking Spots</label>
-              <Input
-                size="sm"
-                type="number"
-                value={level.totalSpots || 0}
-                onChange={(e) => {
-                  const updatedGarages = garages.map(g => {
-                    if (g.id === selectedGarageId) {
-                      return {
-                        ...g,
-                        levels: safeArray(g.levels).map(l =>
-                          l.id === selectedLevelId ? { ...l, totalSpots: parseInt(e.target.value) || 0 } : l
-                        )
-                      };
-                    }
-                    return g;
-                  });
-                  setGarages(updatedGarages);
-                }}
-                slotProps={{ input: { min: 0 } }}
-                sx={INPUT_SX}
-              />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label style={LABEL_STYLE}>EV Charging Spots</label>
-                <Input
-                  size="sm"
-                  type="number"
-                  value={level.evSpots || 0}
-                  onChange={(e) => {
-                    const updatedGarages = garages.map(g => {
-                      if (g.id === selectedGarageId) {
-                        return {
-                          ...g,
-                          levels: safeArray(g.levels).map(l =>
-                            l.id === selectedLevelId ? { ...l, evSpots: parseInt(e.target.value) || 0 } : l
-                          )
-                        };
-                      }
-                      return g;
-                    });
-                    setGarages(updatedGarages);
-                  }}
-                  slotProps={{ input: { min: 0 } }}
-                  sx={INPUT_SX}
-                />
-              </div>
-              <div>
-                <label style={LABEL_STYLE}>ADA/Handicap Spots</label>
-                <Input
-                  size="sm"
-                  type="number"
-                  value={level.handicapSpots || 0}
-                  onChange={(e) => {
-                    const updatedGarages = garages.map(g => {
-                      if (g.id === selectedGarageId) {
-                        return {
-                          ...g,
-                          levels: safeArray(g.levels).map(l =>
-                            l.id === selectedLevelId ? { ...l, handicapSpots: parseInt(e.target.value) || 0 } : l
-                          )
-                        };
-                      }
-                      return g;
-                    });
-                    setGarages(updatedGarages);
-                  }}
-                  slotProps={{ input: { min: 0 } }}
-                  sx={INPUT_SX}
-                />
-              </div>
             </div>
 
             <div>
