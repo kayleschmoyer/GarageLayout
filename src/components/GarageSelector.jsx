@@ -79,7 +79,6 @@ const GarageSelector = () => {
   const garages = safeArray(context?.garages);
   const setGarages = typeof context?.setGarages === 'function' ? context.setGarages : () => { };
   const selectGarage = typeof context?.selectGarage === 'function' ? context.selectGarage : () => { };
-  const setCurrentView = typeof context?.setCurrentView === 'function' ? context.setCurrentView : () => { };
   const mode = context?.mode || 'dark';
   const setMode = typeof context?.setMode === 'function' ? context.setMode : () => { };
 
@@ -346,29 +345,6 @@ const GarageSelector = () => {
         </div>
 
         <div className="header-right-controls">
-          <button
-            className="icon-btn"
-            onClick={() => setCurrentView('site')}
-            title="Site Configuration"
-            style={{
-              padding: '6px 12px',
-              borderRadius: '6px',
-              border: '1px solid var(--joy-palette-neutral-200)',
-              cursor: 'pointer',
-              background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 13,
-              fontWeight: 500
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-            </svg>
-            Site Config
-          </button>
           <button
             className="icon-btn"
             onClick={toggleMode}
