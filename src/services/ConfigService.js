@@ -190,14 +190,16 @@ export const generateCameraHubConfig = (cameras) => {
 
 /**
  * Parse CameraHub config XML
+ * Supports both <CameraHubConfig> and <CameraHub> root elements
  */
 export const parseCameraHubConfig = (xmlContent) => {
   try {
     const result = xml2js(xmlContent, XML_PARSE_OPTIONS);
     const cameras = [];
 
-    // Parse Cameras section
-    const camerasSection = result?.CameraHubConfig?.Cameras?.Camera;
+    // Parse Cameras section - support both CameraHubConfig and CameraHub root elements
+    const root = result?.CameraHubConfig || result?.CameraHub;
+    const camerasSection = root?.Cameras?.Camera;
     if (camerasSection) {
       const cameraArray = Array.isArray(camerasSection) ? camerasSection : [camerasSection];
       cameraArray.forEach(cam => {
