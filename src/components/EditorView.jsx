@@ -4,6 +4,17 @@ import { AppContext } from '../App';
 import MapCanvas from './MapCanvas';
 import InspectorPanel from './InspectorPanel';
 import { jsPDF } from 'jspdf';
+import {
+  generateCameraHubConfig,
+  parseCameraHubConfig,
+  generateDevicesConfig,
+  parseDevicesConfig,
+  generateFLICameraConfig,
+  downloadFile,
+  readFileAsText,
+  exportAllConfigs,
+  getConfigFilePaths
+} from '../services/ConfigService';
 
 // ========================= CONSTANTS =========================
 
@@ -133,10 +144,14 @@ const EditorView = () => {
   const [activeTab, setActiveTab] = useState('cameras');
   const [showAddForm, setShowAddForm] = useState(false);
   const [showLevelSettings, setShowLevelSettings] = useState(false);
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [configImportType, setConfigImportType] = useState('devicesConfig'); // 'devicesConfig', 'cameraHub'
+  const [importMessage, setImportMessage] = useState(null);
   const [toolMode, setToolMode] = useState('select');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [cameraFormStep, setCameraFormStep] = useState(1); // 1: hardware, 2: type, 3: config
   const [activeStreamTab, setActiveStreamTab] = useState(1); // For dual lens: 1 or 2
+  const configFileInputRef = useRef(null);
   const [newDevice, setNewDevice] = useState({
     type: '',
     hardwareType: '', // 'dual-lens' or 'bullet'
@@ -357,6 +372,137 @@ const EditorView = () => {
         [field]: value
       }
     }));
+  }, []);
+
+  // ========================= CONFIG EXPORT/IMPORT =========================
+
+  // Export all configs for current level devices
+  const handleExportConfigs = useCallback(() => {
+    if (!level) return;
+    const allDevices = safeArray(level.devices);
+    if (allDevices.length === 0) {
+      setImportMessage({ type: 'warning', text: 'No devices to export on this level.' });
+      setTimeout(() => setImportMessage(null), 3000);
+      return;
+    }
+
+    const result = exportAllConfigs(allDevices);
+    setImportMessage({
+      type: 'success',
+      text: `Exported: ${result.cameraHubConfig ? 'camerahub-config.xml, ' : ''}DevicesConfig.xml${result.fliConfigs > 0 ? `, ${result.fliConfigs} FLI config(s)` : ''}`
+    });
+    setTimeout(() => setImportMessage(null), 5000);
+  }, [level]);
+
+  // Export configs for all garage devices
+  const handleExportAllGarageConfigs = useCallback(() => {
+    if (!garage) return;
+    const allDevices = [];
+    safeArray(garage.levels).forEach(lvl => {
+      safeArray(lvl.devices).forEach(device => {
+        allDevices.push(device);
+      });
+    });
+
+    if (allDevices.length === 0) {
+      setImportMessage({ type: 'warning', text: 'No devices to export in this garage.' });
+      setTimeout(() => setImportMessage(null), 3000);
+      return;
+    }
+
+    const result = exportAllConfigs(allDevices);
+    setImportMessage({
+      type: 'success',
+      text: `Exported all garage configs: ${allDevices.length} device(s)`
+    });
+    setTimeout(() => setImportMessage(null), 5000);
+  }, [garage]);
+
+  // Handle config file import
+  const handleConfigFileImport = useCallback(async (e) => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+
+    try {
+      const content = await readFileAsText(file);
+      let importedDevices = [];
+
+      if (configImportType === 'devicesConfig') {
+        importedDevices = parseDevicesConfig(content);
+      } else if (configImportType === 'cameraHub') {
+        importedDevices = parseCameraHubConfig(content);
+      }
+
+      if (importedDevices.length === 0) {
+        setImportMessage({ type: 'error', text: 'No devices found in the config file.' });
+        setTimeout(() => setImportMessage(null), 3000);
+        return;
+      }
+
+      // Add imported devices to current level
+      const updatedGarages = garages.map(g => {
+        if (g.id !== selectedGarageId) return g;
+        return {
+          ...g,
+          levels: safeArray(g.levels).map(l => {
+            if (l.id !== selectedLevelId) return l;
+            return {
+              ...l,
+              devices: [...safeArray(l.devices), ...importedDevices]
+            };
+          })
+        };
+      });
+      setGarages(updatedGarages);
+
+      setImportMessage({
+        type: 'success',
+        text: `Imported ${importedDevices.length} device(s) from ${file.name}`
+      });
+      setShowConfigModal(false);
+      setTimeout(() => setImportMessage(null), 5000);
+    } catch (error) {
+      console.error('Error importing config:', error);
+      setImportMessage({ type: 'error', text: 'Failed to parse config file.' });
+      setTimeout(() => setImportMessage(null), 3000);
+    }
+
+    e.target.value = ''; // Reset input
+  }, [configImportType, garages, selectedGarageId, selectedLevelId, setGarages]);
+
+  // Generate single camera config files
+  const handleExportCameraConfigs = useCallback((camera) => {
+    // Generate CameraHub entry
+    const cameraHubXml = generateCameraHubConfig([camera]);
+    downloadFile(cameraHubXml, `${camera.name}-camerahub-entry.xml`);
+
+    // Generate DevicesConfig entry
+    const devicesXml = generateDevicesConfig([camera]);
+    downloadFile(devicesXml, `${camera.name}-device-entry.xml`);
+
+    // Generate FLI config if applicable
+    if (camera.type === 'cam-fli') {
+      const fliXml = generateFLICameraConfig(camera);
+      downloadFile(fliXml, `${camera.name}.xml`);
+    }
+
+    setImportMessage({
+      type: 'success',
+      text: `Exported config files for ${camera.name}`
+    });
+    setTimeout(() => setImportMessage(null), 3000);
+  }, []);
+
+  // Generate config for a single sign or sensor
+  const handleExportDeviceConfig = useCallback((device) => {
+    const devicesXml = generateDevicesConfig([device]);
+    downloadFile(devicesXml, `${device.name}-device-entry.xml`);
+
+    setImportMessage({
+      type: 'success',
+      text: `Exported config for ${device.name}`
+    });
+    setTimeout(() => setImportMessage(null), 3000);
   }, []);
 
   // ========================= PDF EXPORT =========================
@@ -976,10 +1122,40 @@ const EditorView = () => {
 
             {/* Action Buttons */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* Config Export/Import Dropdown */}
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setShowConfigModal(true)}
+                  title="Device Config Files"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '10px 16px',
+                    background: '#22c55e',
+                    border: 'none',
+                    borderRadius: 8,
+                    color: 'white',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="12" y1="11" x2="12" y2="17" />
+                    <polyline points="9 14 12 11 15 14" />
+                  </svg>
+                  Config Files
+                </button>
+              </div>
+
               <button
                 onClick={exportLayoutPDF}
                 title="Export layout as PDF"
-                style={{ 
+                style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
@@ -1005,7 +1181,7 @@ const EditorView = () => {
               <button
                 onClick={() => setShowLevelSettings(true)}
                 title="Level Settings"
-                style={{ 
+                style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
@@ -1028,6 +1204,37 @@ const EditorView = () => {
               </button>
             </div>
           </div>
+
+          {/* Import/Export Message Toast */}
+          {importMessage && (
+            <div style={{
+              position: 'fixed',
+              top: 80,
+              right: 20,
+              padding: '12px 20px',
+              background: importMessage.type === 'success' ? '#22c55e' : importMessage.type === 'error' ? '#ef4444' : '#f59e0b',
+              color: 'white',
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 500,
+              zIndex: 1000,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                {importMessage.type === 'success' ? (
+                  <path d="M20 6L9 17l-5-5" />
+                ) : importMessage.type === 'error' ? (
+                  <path d="M18 6L6 18M6 6l12 12" />
+                ) : (
+                  <path d="M12 9v4M12 17h.01" />
+                )}
+              </svg>
+              {importMessage.text}
+            </div>
+          )}
         </div>
 
             {/* Editor Content */}
@@ -1854,6 +2061,220 @@ const EditorView = () => {
               color="neutral"
               onClick={() => setShowLevelSettings(false)}
               sx={{ color: '#fafafa', borderColor: '#3f3f46', '&:hover': { bgcolor: '#3f3f46' } }}
+            >
+              Close
+            </Button>
+          </div>
+        </ModalDialog>
+      </Modal>
+
+      {/* Config Files Modal */}
+      <Modal open={showConfigModal} onClose={() => setShowConfigModal(false)}>
+        <ModalDialog sx={{
+          ...MODAL_SX,
+          maxWidth: 560,
+          bgcolor: theme.bgSurface,
+          border: `1px solid ${theme.borderSubtle}`
+        }}>
+          <div style={{ padding: '16px 20px', borderBottom: `1px solid ${theme.borderSubtle}`, background: theme.bgHover }}>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: theme.text }}>Device Configuration Files</h3>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: theme.textMuted }}>
+              Export configs to update local Ensight files, or import from existing configs
+            </p>
+          </div>
+
+          <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Export Section */}
+            <div>
+              <label style={{ ...LABEL_STYLE, color: theme.textSecondary, marginBottom: 12 }}>Export Configs</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button
+                  onClick={() => {
+                    handleExportConfigs();
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '12px 16px',
+                    background: theme.bgButton,
+                    border: `1px solid ${theme.borderSubtle}`,
+                    borderRadius: 8,
+                    color: theme.text,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    textAlign: 'left'
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  <div>
+                    <div style={{ fontWeight: 500 }}>Export Current Level Configs</div>
+                    <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>
+                      Downloads camerahub-config.xml, DevicesConfig.xml, and FLI configs for {level?.name}
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    handleExportAllGarageConfigs();
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '12px 16px',
+                    background: theme.bgButton,
+                    border: `1px solid ${theme.borderSubtle}`,
+                    borderRadius: 8,
+                    color: theme.text,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    textAlign: 'left'
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  <div>
+                    <div style={{ fontWeight: 500 }}>Export All Garage Configs</div>
+                    <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 2 }}>
+                      Downloads configs for all devices across all levels in {garage?.name}
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div style={{ borderTop: `1px solid ${theme.borderSubtle}` }} />
+
+            {/* Import Section */}
+            <div>
+              <label style={{ ...LABEL_STYLE, color: theme.textSecondary, marginBottom: 12 }}>Import Devices from Config</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: 8
+                }}>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 12px',
+                    background: configImportType === 'devicesConfig' ? 'rgba(59, 130, 246, 0.15)' : theme.bgButton,
+                    border: configImportType === 'devicesConfig' ? '2px solid #3b82f6' : `1px solid ${theme.borderSubtle}`,
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    color: theme.text,
+                    fontSize: 13
+                  }}>
+                    <input
+                      type="radio"
+                      name="configType"
+                      checked={configImportType === 'devicesConfig'}
+                      onChange={() => setConfigImportType('devicesConfig')}
+                      style={{ display: 'none' }}
+                    />
+                    DevicesConfig.xml
+                  </label>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 12px',
+                    background: configImportType === 'cameraHub' ? 'rgba(59, 130, 246, 0.15)' : theme.bgButton,
+                    border: configImportType === 'cameraHub' ? '2px solid #3b82f6' : `1px solid ${theme.borderSubtle}`,
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    color: theme.text,
+                    fontSize: 13
+                  }}>
+                    <input
+                      type="radio"
+                      name="configType"
+                      checked={configImportType === 'cameraHub'}
+                      onChange={() => setConfigImportType('cameraHub')}
+                      style={{ display: 'none' }}
+                    />
+                    camerahub-config.xml
+                  </label>
+                </div>
+
+                <input
+                  ref={configFileInputRef}
+                  type="file"
+                  accept=".xml"
+                  style={{ display: 'none' }}
+                  onChange={handleConfigFileImport}
+                />
+
+                <button
+                  onClick={() => configFileInputRef.current?.click()}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    padding: '12px 16px',
+                    background: 'rgba(59, 130, 246, 0.1)',
+                    border: `2px dashed ${theme.borderSubtle}`,
+                    borderRadius: 8,
+                    color: theme.text,
+                    fontSize: 13,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  Click to select {configImportType === 'devicesConfig' ? 'DevicesConfig.xml' : 'camerahub-config.xml'}
+                </button>
+
+                <p style={{ fontSize: 11, color: theme.textMuted, margin: '4px 0 0' }}>
+                  Devices will be imported to {level?.name}. Duplicate names will be added as new devices.
+                </p>
+              </div>
+            </div>
+
+            {/* Config File Paths Info */}
+            <div style={{
+              padding: '12px 16px',
+              background: theme.bgHover,
+              borderRadius: 8,
+              border: `1px solid ${theme.borderSubtle}`
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: theme.textSecondary, marginBottom: 8, textTransform: 'uppercase' }}>
+                Local Config File Paths
+              </div>
+              <div style={{ fontSize: 11, color: theme.textMuted, fontFamily: 'monospace', lineHeight: 1.6 }}>
+                <div><strong>Cameras:</strong></div>
+                <div style={{ paddingLeft: 12 }}>C:\Ensight\CameraHub\camerahub-config.xml</div>
+                <div style={{ paddingLeft: 12 }}>C:\Ensight\EPIC\Config\DevicesConfig.xml</div>
+                <div style={{ paddingLeft: 12 }}>C:\Ensight\FLI\Config\[CameraName].xml</div>
+                <div style={{ marginTop: 8 }}><strong>Signs & Sensors:</strong></div>
+                <div style={{ paddingLeft: 12 }}>C:\Ensight\EPIC\Config\DevicesConfig.xml</div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', padding: '14px 20px', borderTop: `1px solid ${theme.borderSubtle}`, background: theme.bgHover }}>
+            <Button
+              size="sm"
+              variant="outlined"
+              color="neutral"
+              onClick={() => setShowConfigModal(false)}
+              sx={{ color: theme.text, borderColor: theme.borderSubtle, '&:hover': { bgcolor: theme.bgButton } }}
             >
               Close
             </Button>
