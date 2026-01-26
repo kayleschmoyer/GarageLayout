@@ -207,21 +207,27 @@ export const parseCameraHubConfig = (xmlContent) => {
         const rtspUrl = getTextContent(cam.RTSPUrl);
         const type = getTextContent(cam.Type);
 
+        const ipAddress = extractIPFromRTSP(rtspUrl);
+        const port = extractPortFromRTSP(rtspUrl);
+
         cameras.push({
           id: Date.now() + Math.random(),
           name,
           type: type === 'FLI' ? 'cam-fli' : type === 'LPR' ? 'cam-lpr' : 'cam-people',
           hardwareType: 'bullet',
+          ipAddress,
+          port,
+          externalUrl: rtspUrl,
           stream1: {
-            ipAddress: extractIPFromRTSP(rtspUrl),
-            port: extractPortFromRTSP(rtspUrl),
+            ipAddress,
+            port,
             externalUrl: rtspUrl,
             direction: 'in',
             rotation: 0,
             flowDestination: 'garage-entry'
           },
-          x: 100 + Math.random() * 200,
-          y: 100 + Math.random() * 200
+          // No x,y coordinates - device is pending placement on canvas
+          pendingPlacement: true
         });
       });
     }
@@ -296,8 +302,8 @@ export const parseDevicesConfig = (xmlContent) => {
             rotation: 0,
             flowDestination: 'garage-entry'
           },
-          x: 100 + Math.random() * 200,
-          y: 100 + Math.random() * 200
+          // No x,y coordinates - device is pending placement on canvas
+          pendingPlacement: true
         });
       });
     }
