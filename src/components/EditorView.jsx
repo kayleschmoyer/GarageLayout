@@ -129,7 +129,6 @@ const EditorView = () => {
   const [showLevelSettings, setShowLevelSettings] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [configImportType, setConfigImportType] = useState('devicesConfig'); // 'devicesConfig', 'cameraHub'
-  const [toolMode, setToolMode] = useState('select');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [cameraFormStep, setCameraFormStep] = useState(1); // 1: hardware, 2: type, 3: config
   const [activeStreamTab, setActiveStreamTab] = useState(1); // For dual lens: 1 or 2
@@ -1580,35 +1579,7 @@ const EditorView = () => {
                   border: `1px solid ${theme.border}`,
                   borderRadius: 8
                 }}>
-                  <div className="canvas-toolbar">
-                    <button
-                      className={`toolbar-btn ${toolMode === 'select' ? 'active' : ''}`}
-                      onClick={() => setToolMode('select')}
-                      title="Select Tool"
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /><path d="M13 13l6 6" />
-                      </svg>
-                    </button>
-                    <button
-                      className={`toolbar-btn ${toolMode === 'pan' ? 'active' : ''}`}
-                      onClick={() => setToolMode('pan')}
-                      title="Pan Tool"
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M5 9l-3 3 3 3M9 5l3-3 3 3M19 9l3 3-3 3M9 19l3 3 3-3M2 12h20M12 2v20" />
-                      </svg>
-                    </button>
-                    <div className="toolbar-divider" />
-                    <button className="toolbar-btn active" title="Grid Toggle">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
-                        <rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
-                      </svg>
-                    </button>
-                  </div>
-
-                  <MapCanvas />
+<MapCanvas />
                 </div>
 
                 {/* Inspector Panel */}
