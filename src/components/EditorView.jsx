@@ -212,6 +212,12 @@ const EditorView = () => {
     signs: signs.length
   }), [cameras, sensors, signs]);
 
+  // Pending placement counts
+  const pendingCameras = useMemo(() => cameras.filter(d => d.pendingPlacement), [cameras]);
+  const pendingSigns = useMemo(() => signs.filter(d => d.pendingPlacement), [signs]);
+  const pendingSensors = useMemo(() => sensors.filter(d => d.pendingPlacement), [sensors]);
+  const hasPendingDevices = pendingCameras.length > 0 || pendingSigns.length > 0 || pendingSensors.length > 0;
+
   // Level navigation
   const currentLevelIndex = useMemo(() => allLevels.findIndex(l => l?.id === selectedLevelId), [allLevels, selectedLevelId]);
   const prevLevel = allLevels[currentLevelIndex - 1];
@@ -353,6 +359,59 @@ const EditorView = () => {
       }
     }));
   }, []);
+
+  // Place a pending device on the canvas
+  const placeDeviceOnCanvas = useCallback((deviceId) => {
+    const updatedGarages = garages.map(g => {
+      if (g.id !== selectedGarageId) return g;
+      return {
+        ...g,
+        levels: safeArray(g.levels).map(l => {
+          if (l.id !== selectedLevelId) return l;
+          return {
+            ...l,
+            devices: safeArray(l.devices).map(d => {
+              if (d.id !== deviceId) return d;
+              // Assign random position and remove pending flag
+              return {
+                ...d,
+                x: 100 + Math.random() * 200,
+                y: 100 + Math.random() * 200,
+                pendingPlacement: false
+              };
+            })
+          };
+        })
+      };
+    });
+    setGarages(updatedGarages);
+  }, [garages, selectedGarageId, selectedLevelId, setGarages]);
+
+  // Place all pending devices on canvas
+  const placeAllPendingDevices = useCallback(() => {
+    const updatedGarages = garages.map(g => {
+      if (g.id !== selectedGarageId) return g;
+      return {
+        ...g,
+        levels: safeArray(g.levels).map(l => {
+          if (l.id !== selectedLevelId) return l;
+          return {
+            ...l,
+            devices: safeArray(l.devices).map(d => {
+              if (!d.pendingPlacement) return d;
+              return {
+                ...d,
+                x: 100 + Math.random() * 400,
+                y: 100 + Math.random() * 300,
+                pendingPlacement: false
+              };
+            })
+          };
+        })
+      };
+    });
+    setGarages(updatedGarages);
+  }, [garages, selectedGarageId, selectedLevelId, setGarages]);
 
   // ========================= CONFIG EXPORT/IMPORT =========================
 
@@ -1161,6 +1220,34 @@ const EditorView = () => {
                         </button>
 
                         <div className="device-list-modern" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {/* Place All Button - show if there are pending devices */}
+                          {activeTab === 'cameras' && pendingCameras.length > 0 && (
+                            <button
+                              onClick={placeAllPendingDevices}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 6,
+                                padding: '8px 12px',
+                                background: 'rgba(59, 130, 246, 0.15)',
+                                border: '1px solid rgba(59, 130, 246, 0.3)',
+                                borderRadius: 6,
+                                color: '#3b82f6',
+                                fontSize: 12,
+                                fontWeight: 500,
+                                cursor: 'pointer',
+                                marginBottom: 4
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                                <circle cx="12" cy="10" r="3" />
+                              </svg>
+                              Place All {pendingCameras.length} Imported Camera{pendingCameras.length > 1 ? 's' : ''} on Canvas
+                            </button>
+                          )}
+
                           {activeTab === 'cameras' && cameras.length === 0 && (
                             <div className="sidebar-empty-state">
                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
@@ -1171,14 +1258,69 @@ const EditorView = () => {
                           )}
 
                           {activeTab === 'cameras' && cameras.map(cam => (
-                            <div key={cam.id} className="modern-device-item">
+                            <div key={cam.id} className="modern-device-item" style={{
+                              background: cam.pendingPlacement ? 'rgba(59, 130, 246, 0.1)' : undefined,
+                              border: cam.pendingPlacement ? '1px dashed rgba(59, 130, 246, 0.4)' : undefined
+                            }}>
                               <div className="device-icon-wrapper">{getDeviceIcon(cam.type)}</div>
-                              <div className="device-info-modern">
+                              <div className="device-info-modern" style={{ flex: 1 }}>
                                 <span className="device-name-modern">{cam.name}</span>
-                                <span className="device-type-modern">{cam.type}</span>
+                                <span className="device-type-modern" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  {cam.ipAddress && <span>{cam.ipAddress}:{cam.port || '554'}</span>}
+                                  {!cam.ipAddress && cam.type}
+                                  {cam.pendingPlacement && (
+                                    <span style={{ color: '#f59e0b', fontSize: 10 }}>• Not placed</span>
+                                  )}
+                                </span>
                               </div>
+                              {cam.pendingPlacement && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); placeDeviceOnCanvas(cam.id); }}
+                                  title="Place on canvas"
+                                  style={{
+                                    padding: '4px 8px',
+                                    background: '#3b82f6',
+                                    border: 'none',
+                                    borderRadius: 4,
+                                    color: 'white',
+                                    fontSize: 10,
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  Place
+                                </button>
+                              )}
                             </div>
                           ))}
+
+                          {/* Place All Button - show if there are pending signs */}
+                          {activeTab === 'signs' && pendingSigns.length > 0 && (
+                            <button
+                              onClick={placeAllPendingDevices}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 6,
+                                padding: '8px 12px',
+                                background: 'rgba(34, 197, 94, 0.15)',
+                                border: '1px solid rgba(34, 197, 94, 0.3)',
+                                borderRadius: 6,
+                                color: '#22c55e',
+                                fontSize: 12,
+                                fontWeight: 500,
+                                cursor: 'pointer',
+                                marginBottom: 4
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                                <circle cx="12" cy="10" r="3" />
+                              </svg>
+                              Place All {pendingSigns.length} Imported Sign{pendingSigns.length > 1 ? 's' : ''} on Canvas
+                            </button>
+                          )}
 
                           {activeTab === 'signs' && signs.length === 0 && (
                             <div className="sidebar-empty-state">
@@ -1190,14 +1332,69 @@ const EditorView = () => {
                           )}
 
                           {activeTab === 'signs' && signs.map(sign => (
-                            <div key={sign.id} className="modern-device-item">
+                            <div key={sign.id} className="modern-device-item" style={{
+                              background: sign.pendingPlacement ? 'rgba(34, 197, 94, 0.1)' : undefined,
+                              border: sign.pendingPlacement ? '1px dashed rgba(34, 197, 94, 0.4)' : undefined
+                            }}>
                               <div className="device-icon-wrapper">{getDeviceIcon(sign.type)}</div>
-                              <div className="device-info-modern">
+                              <div className="device-info-modern" style={{ flex: 1 }}>
                                 <span className="device-name-modern">{sign.name}</span>
-                                <span className="device-type-modern">{sign.type}</span>
+                                <span className="device-type-modern" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  {sign.ipAddress && <span>{sign.ipAddress}:{sign.port || '80'}</span>}
+                                  {!sign.ipAddress && sign.type}
+                                  {sign.pendingPlacement && (
+                                    <span style={{ color: '#f59e0b', fontSize: 10 }}>• Not placed</span>
+                                  )}
+                                </span>
                               </div>
+                              {sign.pendingPlacement && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); placeDeviceOnCanvas(sign.id); }}
+                                  title="Place on canvas"
+                                  style={{
+                                    padding: '4px 8px',
+                                    background: '#22c55e',
+                                    border: 'none',
+                                    borderRadius: 4,
+                                    color: 'white',
+                                    fontSize: 10,
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  Place
+                                </button>
+                              )}
                             </div>
                           ))}
+
+                          {/* Place All Button - show if there are pending sensors */}
+                          {activeTab === 'sensors' && pendingSensors.length > 0 && (
+                            <button
+                              onClick={placeAllPendingDevices}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 6,
+                                padding: '8px 12px',
+                                background: 'rgba(245, 158, 11, 0.15)',
+                                border: '1px solid rgba(245, 158, 11, 0.3)',
+                                borderRadius: 6,
+                                color: '#f59e0b',
+                                fontSize: 12,
+                                fontWeight: 500,
+                                cursor: 'pointer',
+                                marginBottom: 4
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                                <circle cx="12" cy="10" r="3" />
+                              </svg>
+                              Place All {pendingSensors.length} Imported Sensor{pendingSensors.length > 1 ? 's' : ''} on Canvas
+                            </button>
+                          )}
 
                           {activeTab === 'sensors' && sensors.length === 0 && (
                             <div className="sidebar-empty-state">
@@ -1209,12 +1406,38 @@ const EditorView = () => {
                           )}
 
                           {activeTab === 'sensors' && sensors.map(sensor => (
-                            <div key={sensor.id} className="modern-device-item">
+                            <div key={sensor.id} className="modern-device-item" style={{
+                              background: sensor.pendingPlacement ? 'rgba(245, 158, 11, 0.1)' : undefined,
+                              border: sensor.pendingPlacement ? '1px dashed rgba(245, 158, 11, 0.4)' : undefined
+                            }}>
                               <div className="device-icon-wrapper">{getDeviceIcon(sensor.type)}</div>
-                              <div className="device-info-modern">
+                              <div className="device-info-modern" style={{ flex: 1 }}>
                                 <span className="device-name-modern">{sensor.name}</span>
-                                <span className="device-type-modern">{sensor.spotNumber || 'Sensor'}</span>
+                                <span className="device-type-modern" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  {sensor.spotNumber || 'Sensor'}
+                                  {sensor.pendingPlacement && (
+                                    <span style={{ color: '#f59e0b', fontSize: 10 }}>• Not placed</span>
+                                  )}
+                                </span>
                               </div>
+                              {sensor.pendingPlacement && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); placeDeviceOnCanvas(sensor.id); }}
+                                  title="Place on canvas"
+                                  style={{
+                                    padding: '4px 8px',
+                                    background: '#f59e0b',
+                                    border: 'none',
+                                    borderRadius: 4,
+                                    color: 'white',
+                                    fontSize: 10,
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  Place
+                                </button>
+                              )}
                             </div>
                           ))}
                         </div>

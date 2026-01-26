@@ -405,8 +405,8 @@ const MapCanvas = () => {
           {/* Grid */}
           {renderGrid()}
 
-          {/* Devices (cameras, signs, sensors) */}
-          {currentLevel.devices?.map(device => renderDevice(device))}
+          {/* Devices (cameras, signs, sensors) - skip devices pending placement */}
+          {currentLevel.devices?.filter(device => !device.pendingPlacement).map(device => renderDevice(device))}
         </Layer>
       </Stage>
     </div>
