@@ -1258,10 +1258,19 @@ const EditorView = () => {
                           )}
 
                           {activeTab === 'cameras' && cameras.map(cam => (
-                            <div key={cam.id} className="modern-device-item" style={{
-                              background: cam.pendingPlacement ? 'rgba(59, 130, 246, 0.1)' : undefined,
-                              border: cam.pendingPlacement ? '1px dashed rgba(59, 130, 246, 0.4)' : undefined
-                            }}>
+                            <div
+                              key={cam.id}
+                              className="modern-device-item"
+                              onClick={() => setSelectedDevice(cam)}
+                              style={{
+                                background: selectedDevice?.id === cam.id
+                                  ? 'rgba(59, 130, 246, 0.2)'
+                                  : cam.pendingPlacement ? 'rgba(59, 130, 246, 0.1)' : undefined,
+                                border: selectedDevice?.id === cam.id
+                                  ? '1px solid rgba(59, 130, 246, 0.6)'
+                                  : cam.pendingPlacement ? '1px dashed rgba(59, 130, 246, 0.4)' : undefined,
+                                cursor: 'pointer'
+                              }}>
                               <div className="device-icon-wrapper">{getDeviceIcon(cam.type)}</div>
                               <div className="device-info-modern" style={{ flex: 1 }}>
                                 <span className="device-name-modern">{cam.name}</span>
@@ -1332,10 +1341,19 @@ const EditorView = () => {
                           )}
 
                           {activeTab === 'signs' && signs.map(sign => (
-                            <div key={sign.id} className="modern-device-item" style={{
-                              background: sign.pendingPlacement ? 'rgba(34, 197, 94, 0.1)' : undefined,
-                              border: sign.pendingPlacement ? '1px dashed rgba(34, 197, 94, 0.4)' : undefined
-                            }}>
+                            <div
+                              key={sign.id}
+                              className="modern-device-item"
+                              onClick={() => setSelectedDevice(sign)}
+                              style={{
+                                background: selectedDevice?.id === sign.id
+                                  ? 'rgba(34, 197, 94, 0.2)'
+                                  : sign.pendingPlacement ? 'rgba(34, 197, 94, 0.1)' : undefined,
+                                border: selectedDevice?.id === sign.id
+                                  ? '1px solid rgba(34, 197, 94, 0.6)'
+                                  : sign.pendingPlacement ? '1px dashed rgba(34, 197, 94, 0.4)' : undefined,
+                                cursor: 'pointer'
+                              }}>
                               <div className="device-icon-wrapper">{getDeviceIcon(sign.type)}</div>
                               <div className="device-info-modern" style={{ flex: 1 }}>
                                 <span className="device-name-modern">{sign.name}</span>
@@ -1406,10 +1424,19 @@ const EditorView = () => {
                           )}
 
                           {activeTab === 'sensors' && sensors.map(sensor => (
-                            <div key={sensor.id} className="modern-device-item" style={{
-                              background: sensor.pendingPlacement ? 'rgba(245, 158, 11, 0.1)' : undefined,
-                              border: sensor.pendingPlacement ? '1px dashed rgba(245, 158, 11, 0.4)' : undefined
-                            }}>
+                            <div
+                              key={sensor.id}
+                              className="modern-device-item"
+                              onClick={() => setSelectedDevice(sensor)}
+                              style={{
+                                background: selectedDevice?.id === sensor.id
+                                  ? 'rgba(245, 158, 11, 0.2)'
+                                  : sensor.pendingPlacement ? 'rgba(245, 158, 11, 0.1)' : undefined,
+                                border: selectedDevice?.id === sensor.id
+                                  ? '1px solid rgba(245, 158, 11, 0.6)'
+                                  : sensor.pendingPlacement ? '1px dashed rgba(245, 158, 11, 0.4)' : undefined,
+                                cursor: 'pointer'
+                              }}>
                               <div className="device-icon-wrapper">{getDeviceIcon(sensor.type)}</div>
                               <div className="device-info-modern" style={{ flex: 1 }}>
                                 <span className="device-name-modern">{sensor.name}</span>
