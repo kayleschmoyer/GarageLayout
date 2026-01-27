@@ -138,39 +138,79 @@ const getTextContent = (element) => {
 
 /**
  * Generate CameraHub config XML content
+ * For dual-lens cameras, generates separate entries for each stream
  */
 export const generateCameraHubConfig = (cameras) => {
-  const cameraElements = cameras.map(cam => {
-    const ipAddress = cam.stream1?.ipAddress || cam.ipAddress || '';
-    const port = cam.stream1?.port || cam.port || '554';
-    const rtspUrl = cam.stream1?.externalUrl || buildRTSPUrl(ipAddress, port);
+  const cameraElements = [];
+  const fliCameraElements = [];
 
-    return {
-      Name: { _text: cam.name },
-      RTSPUrl: { _text: rtspUrl },
-      FPS: { _text: DEFAULT_CAMERA_SETTINGS.FPS },
-      Type: { _text: getCameraConfigType(cam.type) },
-      RecordRawClips: { _text: DEFAULT_CAMERA_SETTINGS.RecordRawClips },
-      Enabled: { _text: DEFAULT_CAMERA_SETTINGS.Enabled },
-      MotionThreshold: { _text: DEFAULT_CAMERA_SETTINGS.MotionThreshold }
-    };
-  });
+  cameras.forEach(cam => {
+    const isDualLens = cam.hardwareType === 'dual-lens';
 
-  const fliCameras = cameras.filter(cam => cam.type === 'cam-fli');
-  const fliCameraElements = fliCameras.map(cam => {
-    const ipAddress = cam.stream1?.ipAddress || cam.ipAddress || '';
-    const port = cam.stream1?.port || cam.port || '554';
-    const rtspUrl = cam.stream1?.externalUrl || buildRTSPUrl(ipAddress, port);
+    if (isDualLens) {
+      // Generate entries for both streams
+      [1, 2].forEach(streamNum => {
+        const stream = streamNum === 1 ? cam.stream1 : cam.stream2;
+        if (!stream?.ipAddress) return; // Skip if stream not configured
 
-    return {
-      Name: { _text: cam.name },
-      RTSPUrl: { _text: rtspUrl },
-      FPS: { _text: DEFAULT_CAMERA_SETTINGS.FPS },
-      Type: { _text: 'FLI' },
-      RecordRawClips: { _text: DEFAULT_CAMERA_SETTINGS.RecordRawClips },
-      Enabled: { _text: DEFAULT_CAMERA_SETTINGS.Enabled },
-      MotionThreshold: { _text: DEFAULT_CAMERA_SETTINGS.MotionThreshold }
-    };
+        const ipAddress = stream.ipAddress || '';
+        const port = stream.port || '554';
+        const rtspUrl = stream.externalUrl || buildRTSPUrl(ipAddress, port);
+        const streamType = stream.streamType || cam.type || 'cam-fli';
+        const streamName = `${cam.name}-S${streamNum}`;
+
+        cameraElements.push({
+          Name: { _text: streamName },
+          RTSPUrl: { _text: rtspUrl },
+          FPS: { _text: DEFAULT_CAMERA_SETTINGS.FPS },
+          Type: { _text: getCameraConfigType(streamType) },
+          RecordRawClips: { _text: DEFAULT_CAMERA_SETTINGS.RecordRawClips },
+          Enabled: { _text: DEFAULT_CAMERA_SETTINGS.Enabled },
+          MotionThreshold: { _text: DEFAULT_CAMERA_SETTINGS.MotionThreshold }
+        });
+
+        // Add to FLI cameras if type is FLI
+        if (streamType === 'cam-fli') {
+          fliCameraElements.push({
+            Name: { _text: streamName },
+            RTSPUrl: { _text: rtspUrl },
+            FPS: { _text: DEFAULT_CAMERA_SETTINGS.FPS },
+            Type: { _text: 'FLI' },
+            RecordRawClips: { _text: DEFAULT_CAMERA_SETTINGS.RecordRawClips },
+            Enabled: { _text: DEFAULT_CAMERA_SETTINGS.Enabled },
+            MotionThreshold: { _text: DEFAULT_CAMERA_SETTINGS.MotionThreshold }
+          });
+        }
+      });
+    } else {
+      // Single stream camera (bullet)
+      const ipAddress = cam.stream1?.ipAddress || cam.ipAddress || '';
+      const port = cam.stream1?.port || cam.port || '554';
+      const rtspUrl = cam.stream1?.externalUrl || buildRTSPUrl(ipAddress, port);
+
+      cameraElements.push({
+        Name: { _text: cam.name },
+        RTSPUrl: { _text: rtspUrl },
+        FPS: { _text: DEFAULT_CAMERA_SETTINGS.FPS },
+        Type: { _text: getCameraConfigType(cam.type) },
+        RecordRawClips: { _text: DEFAULT_CAMERA_SETTINGS.RecordRawClips },
+        Enabled: { _text: DEFAULT_CAMERA_SETTINGS.Enabled },
+        MotionThreshold: { _text: DEFAULT_CAMERA_SETTINGS.MotionThreshold }
+      });
+
+      // Add to FLI cameras if type is FLI
+      if (cam.type === 'cam-fli') {
+        fliCameraElements.push({
+          Name: { _text: cam.name },
+          RTSPUrl: { _text: rtspUrl },
+          FPS: { _text: DEFAULT_CAMERA_SETTINGS.FPS },
+          Type: { _text: 'FLI' },
+          RecordRawClips: { _text: DEFAULT_CAMERA_SETTINGS.RecordRawClips },
+          Enabled: { _text: DEFAULT_CAMERA_SETTINGS.Enabled },
+          MotionThreshold: { _text: DEFAULT_CAMERA_SETTINGS.MotionThreshold }
+        });
+      }
+    }
   });
 
   const config = {
@@ -243,18 +283,44 @@ export const parseCameraHubConfig = (xmlContent) => {
 
 /**
  * Generate DevicesConfig.xml content
+ * For dual-lens cameras, generates separate entries for each stream
  */
 export const generateDevicesConfig = (devices) => {
-  const deviceElements = devices.map(device => {
-    const ipAddress = device.stream1?.ipAddress || device.ipAddress || '';
-    const port = device.stream1?.port || device.port || (device.type?.startsWith('sign-') ? '10001' : '554');
+  const deviceElements = [];
 
-    return {
-      Name: { _text: device.name },
-      IPAddress: { _text: ipAddress },
-      Port: { _text: port },
-      Type: { _text: getDeviceConfigType(device.type) }
-    };
+  devices.forEach(device => {
+    const isCamera = device.type?.startsWith('cam-');
+    const isDualLens = device.hardwareType === 'dual-lens';
+
+    if (isCamera && isDualLens) {
+      // Generate entries for both streams
+      [1, 2].forEach(streamNum => {
+        const stream = streamNum === 1 ? device.stream1 : device.stream2;
+        if (!stream?.ipAddress) return; // Skip if stream not configured
+
+        const ipAddress = stream.ipAddress || '';
+        const port = stream.port || '554';
+        const streamName = `${device.name}-S${streamNum}`;
+
+        deviceElements.push({
+          Name: { _text: streamName },
+          IPAddress: { _text: ipAddress },
+          Port: { _text: port },
+          Type: { _text: 'CAMERA' }
+        });
+      });
+    } else {
+      // Single stream camera or non-camera device
+      const ipAddress = device.stream1?.ipAddress || device.ipAddress || '';
+      const port = device.stream1?.port || device.port || (device.type?.startsWith('sign-') ? '10001' : '554');
+
+      deviceElements.push({
+        Name: { _text: device.name },
+        IPAddress: { _text: ipAddress },
+        Port: { _text: port },
+        Type: { _text: getDeviceConfigType(device.type) }
+      });
+    }
   });
 
   const config = {
@@ -319,8 +385,10 @@ export const parseDevicesConfig = (xmlContent) => {
 
 /**
  * Generate individual FLI camera config XML
+ * @param {Object} camera - Camera object
+ * @param {string} [overrideName] - Optional name override for dual-lens stream naming
  */
-export const generateFLICameraConfig = (camera) => {
+export const generateFLICameraConfig = (camera, overrideName = null) => {
   const config = {
     _declaration: { _attributes: { version: '1.0', encoding: 'utf-8' } },
     PluginConfig: {
@@ -328,7 +396,7 @@ export const generateFLICameraConfig = (camera) => {
         'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
         'xmlns:xsd': 'http://www.w3.org/2001/XMLSchema'
       },
-      CameraName: { _text: camera.name },
+      CameraName: { _text: overrideName || camera.name },
       EnhancedVisuals: { _text: DEFAULT_FLI_CONFIG.EnhancedVisuals },
       ResizeWidth: { _text: DEFAULT_FLI_CONFIG.ResizeWidth },
       FLIConfig: {
@@ -418,6 +486,7 @@ export const readFileAsText = (file) => {
 
 /**
  * Export all device configs as a ZIP-like bundle (downloads each file)
+ * Handles dual-lens cameras by generating separate configs for each FLI stream
  */
 export const exportAllConfigs = (allDevices) => {
   const cameras = allDevices.filter(d => d.type?.startsWith('cam-'));
@@ -435,29 +504,60 @@ export const exportAllConfigs = (allDevices) => {
   downloadFile(devicesConfig, 'DevicesConfig.xml');
 
   // Generate and download individual FLI camera configs
-  const fliCameras = cameras.filter(c => c.type === 'cam-fli');
-  fliCameras.forEach(camera => {
-    const fliConfig = generateFLICameraConfig(camera);
-    downloadFile(fliConfig, `${camera.name}.xml`);
+  let fliConfigCount = 0;
+  cameras.forEach(camera => {
+    const isDualLens = camera.hardwareType === 'dual-lens';
+
+    if (isDualLens) {
+      // Check each stream for FLI type
+      [1, 2].forEach(streamNum => {
+        const stream = streamNum === 1 ? camera.stream1 : camera.stream2;
+        const streamType = stream?.streamType || camera.type;
+        if (streamType === 'cam-fli' && stream?.ipAddress) {
+          const streamName = `${camera.name}-S${streamNum}`;
+          const fliConfig = generateFLICameraConfig(camera, streamName);
+          downloadFile(fliConfig, `${streamName}.xml`);
+          fliConfigCount++;
+        }
+      });
+    } else if (camera.type === 'cam-fli') {
+      const fliConfig = generateFLICameraConfig(camera);
+      downloadFile(fliConfig, `${camera.name}.xml`);
+      fliConfigCount++;
+    }
   });
 
   return {
     cameraHubConfig: cameras.length > 0,
     devicesConfig: true,
-    fliConfigs: fliCameras.length
+    fliConfigs: fliConfigCount
   };
 };
 
 /**
  * Export single device config
+ * Handles dual-lens cameras by generating separate configs for each stream
  */
 export const exportDeviceConfig = (device) => {
+  const isDualLens = device.hardwareType === 'dual-lens';
+
   if (device.type?.startsWith('cam-')) {
     // Export camera config
     const cameraHubConfig = generateCameraHubConfig([device]);
     downloadFile(cameraHubConfig, `${device.name}-camerahub.xml`);
 
-    if (device.type === 'cam-fli') {
+    // Export FLI configs
+    if (isDualLens) {
+      [1, 2].forEach(streamNum => {
+        const stream = streamNum === 1 ? device.stream1 : device.stream2;
+        const streamType = stream?.streamType || device.type;
+        if (streamType === 'cam-fli' && stream?.ipAddress) {
+          const streamName = `${device.name}-S${streamNum}`;
+          const fliConfig = generateFLICameraConfig(device, streamName);
+          downloadFile(fliConfig, `${streamName}.xml`);
+        }
+      });
+    } else if (device.type === 'cam-fli') {
       const fliConfig = generateFLICameraConfig(device);
       downloadFile(fliConfig, `${device.name}.xml`);
     }
@@ -472,14 +572,26 @@ export const exportDeviceConfig = (device) => {
 
 /**
  * Get the expected config file paths for a device
+ * Handles dual-lens cameras by showing paths for each FLI stream
  */
 export const getConfigFilePaths = (device) => {
   const paths = [];
+  const isDualLens = device.hardwareType === 'dual-lens';
 
   if (device.type?.startsWith('cam-')) {
     paths.push('C:\\Ensight\\CameraHub\\camerahub-config.xml');
     paths.push('C:\\Ensight\\EPIC\\Config\\DevicesConfig.xml');
-    if (device.type === 'cam-fli') {
+
+    if (isDualLens) {
+      // Check each stream for FLI type
+      [1, 2].forEach(streamNum => {
+        const stream = streamNum === 1 ? device.stream1 : device.stream2;
+        const streamType = stream?.streamType || device.type;
+        if (streamType === 'cam-fli') {
+          paths.push(`C:\\Ensight\\FLI\\Config\\${device.name}-S${streamNum}.xml`);
+        }
+      });
+    } else if (device.type === 'cam-fli') {
       paths.push(`C:\\Ensight\\FLI\\Config\\${device.name}.xml`);
     }
   } else if (device.type?.startsWith('sign-')) {

@@ -28,6 +28,9 @@ const MapCanvas = () => {
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [showGrid, setShowGrid] = useState(true);
 
+  // Tooltip state
+  const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, content: '' });
+
   useEffect(() => {
     const updateSize = () => {
       if (containerRef.current) {
@@ -150,6 +153,51 @@ const MapCanvas = () => {
     return (rotation || 0) - 30;
   };
 
+  // Build tooltip content for a device
+  const getTooltipContent = (device) => {
+    const isCamera = device.type?.startsWith('cam-');
+    const isDualLens = device.hardwareType === 'dual-lens';
+    let content = device.name || 'Unnamed Device';
+
+    if (isCamera) {
+      if (isDualLens) {
+        const stream1Type = device.stream1?.streamType || device.type;
+        const stream2Type = device.stream2?.streamType || device.type;
+        const typeLabel1 = stream1Type === 'cam-fli' ? 'FLI' : stream1Type === 'cam-lpr' ? 'LPR' : 'CAM';
+        const typeLabel2 = stream2Type === 'cam-fli' ? 'FLI' : stream2Type === 'cam-lpr' ? 'LPR' : 'CAM';
+        content += ` (${typeLabel1}/${typeLabel2})`;
+      } else {
+        const typeLabel = device.type === 'cam-fli' ? 'FLI' : device.type === 'cam-lpr' ? 'LPR' : 'Camera';
+        content += ` (${typeLabel})`;
+      }
+    }
+
+    return content;
+  };
+
+  // Show tooltip for a device
+  const showTooltip = (device, e) => {
+    const stage = e.target.getStage();
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    if (!containerRect) return;
+
+    // Get position relative to stage
+    const pointerPos = stage.getPointerPosition();
+    if (!pointerPos) return;
+
+    setTooltip({
+      visible: true,
+      x: pointerPos.x,
+      y: pointerPos.y - 40, // Position above the cursor
+      content: getTooltipContent(device)
+    });
+  };
+
+  // Hide tooltip
+  const hideTooltip = () => {
+    setTooltip({ visible: false, x: 0, y: 0, content: '' });
+  };
+
   // Render grid
   const renderGrid = () => {
     if (!showGrid) return null;
@@ -207,9 +255,15 @@ const MapCanvas = () => {
         }}
         onMouseEnter={(e) => {
           e.target.getStage().container().style.cursor = 'grab';
+          showTooltip(device, e);
         }}
         onMouseLeave={(e) => {
           e.target.getStage().container().style.cursor = 'default';
+          hideTooltip();
+        }}
+        onMouseMove={(e) => {
+          // Update tooltip position as mouse moves
+          showTooltip(device, e);
         }}
       >
         {/* Larger hit area for easier clicking/dragging */}
@@ -409,6 +463,31 @@ const MapCanvas = () => {
           {currentLevel.devices?.filter(device => !device.pendingPlacement).map(device => renderDevice(device))}
         </Layer>
       </Stage>
+
+      {/* Hover Tooltip */}
+      {tooltip.visible && (
+        <div
+          style={{
+            position: 'absolute',
+            left: tooltip.x,
+            top: tooltip.y,
+            transform: 'translateX(-50%)',
+            background: isDark ? 'rgba(24, 24, 27, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+            color: isDark ? '#fafafa' : '#18181b',
+            padding: '6px 10px',
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 500,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            border: isDark ? '1px solid #3f3f46' : '1px solid #e4e4e7',
+            pointerEvents: 'none',
+            zIndex: 1000,
+            whiteSpace: 'nowrap'
+          }}
+        >
+          {tooltip.content}
+        </div>
+      )}
     </div>
   );
 };

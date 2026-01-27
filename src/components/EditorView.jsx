@@ -145,7 +145,8 @@ const EditorView = () => {
       rotation: 0,
       flowDestination: 'garage-entry',
       viewImage: null,
-      externalUrl: ''
+      externalUrl: '',
+      streamType: '' // 'cam-fli' or 'cam-lpr' for dual-lens
     },
     // Stream 2 settings (for dual lens)
     stream2: {
@@ -155,7 +156,8 @@ const EditorView = () => {
       rotation: 0,
       flowDestination: 'garage-entry',
       viewImage: null,
-      externalUrl: ''
+      externalUrl: '',
+      streamType: '' // 'cam-fli' or 'cam-lpr' for dual-lens
     },
     // Legacy fields for signs/sensors
     ipAddress: '',
@@ -296,7 +298,8 @@ const EditorView = () => {
         rotation: 0,
         flowDestination: 'garage-entry',
         viewImage: null,
-        externalUrl: ''
+        externalUrl: '',
+        streamType: ''
       },
       stream2: {
         ipAddress: '',
@@ -305,7 +308,8 @@ const EditorView = () => {
         rotation: 0,
         flowDestination: 'garage-entry',
         viewImage: null,
-        externalUrl: ''
+        externalUrl: '',
+        streamType: ''
       },
       ipAddress: '',
       port: '',
@@ -1651,6 +1655,41 @@ const EditorView = () => {
                                           />
                                         </div>
                                       </div>
+
+                                      {/* Stream Type Selector for Dual Lens */}
+                                      {newDevice.hardwareType === 'dual-lens' && (
+                                        <div style={{ marginTop: 12 }}>
+                                          <label className="form-label-small">Stream Type</label>
+                                          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                                            {[
+                                              { value: 'cam-fli', label: 'FLI' },
+                                              { value: 'cam-lpr', label: 'LPR' }
+                                            ].map(opt => {
+                                              const isSelected = (stream.streamType || newDevice.type) === opt.value;
+                                              return (
+                                                <button
+                                                  key={opt.value}
+                                                  type="button"
+                                                  onClick={() => updateCurrentStream('streamType', opt.value)}
+                                                  style={{
+                                                    flex: 1,
+                                                    padding: '8px 12px',
+                                                    border: isSelected ? '2px solid #3b82f6' : `1px solid ${theme.borderSubtle}`,
+                                                    background: isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                                                    borderRadius: 6,
+                                                    cursor: 'pointer',
+                                                    color: isSelected ? '#3b82f6' : theme.textSecondary,
+                                                    fontWeight: isSelected ? 600 : 400,
+                                                    fontSize: 12
+                                                  }}
+                                                >
+                                                  {opt.label}
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
 
                                     <div className="form-section" style={{ marginTop: 16 }}>

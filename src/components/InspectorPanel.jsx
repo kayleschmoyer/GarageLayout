@@ -9,18 +9,19 @@ import {
 } from '../services/ConfigService';
 
 const InspectorPanel = () => {
-  const { 
-    garages, 
-    setGarages, 
-    selectedGarageId, 
-    selectedLevelId, 
-    selectedDevice, 
-    setSelectedDevice 
+  const {
+    garages,
+    setGarages,
+    selectedGarageId,
+    selectedLevelId,
+    selectedDevice,
+    setSelectedDevice
   } = useContext(AppContext);
 
   const [showImageModal, setShowImageModal] = useState(false);
   const [showPreviewFullscreen, setShowPreviewFullscreen] = useState(false);
   const [overrideMessage, setOverrideMessage] = useState(null);
+  const [activeStreamTab, setActiveStreamTab] = useState(1);
   const fileInputRef = useRef(null);
 
   const garage = garages.find(g => g.id === selectedGarageId);
@@ -154,8 +155,35 @@ const InspectorPanel = () => {
   const isStaticSign = device.type === 'sign-static';
   const isSpaceSensor = device.type === 'sensor-space';
   
-  const deviceTypeLabel = isDesignableSign ? 'Designable Sign' : isStaticSign ? 'Static Sign' : 
+  const deviceTypeLabel = isDesignableSign ? 'Designable Sign' : isStaticSign ? 'Static Sign' :
     isCamera ? 'Camera' : isSpaceSensor ? 'Space Sensor' : 'Device';
+
+  const isDualLens = device?.hardwareType === 'dual-lens';
+
+  // Helper to update stream properties for dual-lens cameras
+  const updateStreamProperty = (streamNum, field, value) => {
+    const streamKey = streamNum === 1 ? 'stream1' : 'stream2';
+    updateDevice(device.id, {
+      [streamKey]: {
+        ...device[streamKey],
+        [field]: value
+      }
+    });
+  };
+
+  // Get current stream data based on active tab
+  const getCurrentStream = () => {
+    if (!isDualLens) {
+      return device.stream1 || { ipAddress: device.ipAddress, port: device.port, streamType: device.type };
+    }
+    return activeStreamTab === 1 ? device.stream1 : device.stream2;
+  };
+
+  // Stream type options
+  const streamTypeOptions = [
+    { value: 'cam-fli', label: 'FLI' },
+    { value: 'cam-lpr', label: 'LPR' }
+  ];
 
   // Get flow destination options based on direction
   const getFlowOptions = () => {
@@ -234,27 +262,134 @@ const InspectorPanel = () => {
               onChange={(e) => updateDevice(device.id, { name: e.target.value })}
             />
           </div>
-          {!isSensor && (
-            <div className="compact-row-inline">
-              <div className="inline-field ip-field">
-                <label>IP</label>
-                <input
-                  type="text"
-                  value={device.ipAddress || ''}
-                  placeholder="10.16.6.45"
-                  onChange={(e) => updateDevice(device.id, { ipAddress: e.target.value })}
-                />
-              </div>
-              <div className="inline-field port-field">
-                <label>Port</label>
-                <input
-                  type="text"
-                  value={device.port || ''}
-                  placeholder={isStaticSign ? '10001' : '80'}
-                  onChange={(e) => updateDevice(device.id, { port: e.target.value })}
-                />
+
+          {/* Stream Tabs for Dual Lens Cameras */}
+          {isCamera && isDualLens && (
+            <div className="stream-tabs-inspector" style={{ display: 'flex', gap: 4, margin: '12px 0' }}>
+              <button
+                className={`stream-tab-btn ${activeStreamTab === 1 ? 'active' : ''}`}
+                onClick={() => setActiveStreamTab(1)}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  border: activeStreamTab === 1 ? '2px solid #3b82f6' : '1px solid #3f3f46',
+                  background: activeStreamTab === 1 ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  color: '#fafafa',
+                  fontWeight: activeStreamTab === 1 ? 600 : 400,
+                  fontSize: 12
+                }}
+              >
+                Stream 1 {device.stream1?.streamType ? `(${device.stream1.streamType === 'cam-fli' ? 'FLI' : 'LPR'})` : ''}
+              </button>
+              <button
+                className={`stream-tab-btn ${activeStreamTab === 2 ? 'active' : ''}`}
+                onClick={() => setActiveStreamTab(2)}
+                style={{
+                  flex: 1,
+                  padding: '8px 12px',
+                  border: activeStreamTab === 2 ? '2px solid #3b82f6' : '1px solid #3f3f46',
+                  background: activeStreamTab === 2 ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  color: '#fafafa',
+                  fontWeight: activeStreamTab === 2 ? 600 : 400,
+                  fontSize: 12
+                }}
+              >
+                Stream 2 {device.stream2?.streamType ? `(${device.stream2.streamType === 'cam-fli' ? 'FLI' : 'LPR'})` : ''}
+              </button>
+            </div>
+          )}
+
+          {/* Stream Type Selector for Cameras */}
+          {isCamera && (
+            <div className="compact-row" style={{ marginBottom: 8 }}>
+              <label>Stream Type</label>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {streamTypeOptions.map(opt => {
+                  const currentStream = getCurrentStream();
+                  const currentType = isDualLens
+                    ? (currentStream?.streamType || device.type)
+                    : device.type;
+                  const isSelected = currentType === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => {
+                        if (isDualLens) {
+                          updateStreamProperty(activeStreamTab, 'streamType', opt.value);
+                        } else {
+                          updateDevice(device.id, { type: opt.value });
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '6px 10px',
+                        border: isSelected ? '2px solid #3b82f6' : '1px solid #3f3f46',
+                        background: isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                        color: isSelected ? '#3b82f6' : '#a1a1aa',
+                        fontWeight: isSelected ? 600 : 400,
+                        fontSize: 11
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
+          )}
+
+          {/* IP/Port - Stream-aware for dual-lens cameras */}
+          {!isSensor && (
+            (() => {
+              const currentStream = getCurrentStream();
+              const ipValue = isDualLens
+                ? (currentStream?.ipAddress || '')
+                : (device.ipAddress || '');
+              const portValue = isDualLens
+                ? (currentStream?.port || '')
+                : (device.port || '');
+
+              return (
+                <div className="compact-row-inline">
+                  <div className="inline-field ip-field">
+                    <label>IP</label>
+                    <input
+                      type="text"
+                      value={ipValue}
+                      placeholder="10.16.6.45"
+                      onChange={(e) => {
+                        if (isDualLens) {
+                          updateStreamProperty(activeStreamTab, 'ipAddress', e.target.value);
+                        } else {
+                          updateDevice(device.id, { ipAddress: e.target.value });
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="inline-field port-field">
+                    <label>Port</label>
+                    <input
+                      type="text"
+                      value={portValue}
+                      placeholder={isStaticSign ? '10001' : '80'}
+                      onChange={(e) => {
+                        if (isDualLens) {
+                          updateStreamProperty(activeStreamTab, 'port', e.target.value);
+                        } else {
+                          updateDevice(device.id, { port: e.target.value });
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })()
           )}
           {isCamera && (
             <div className="compact-row">
@@ -275,42 +410,57 @@ const InspectorPanel = () => {
 
         {/* ===== EXTERNAL URL (for cameras and signs) ===== */}
         {(isCamera || isSign) && (
-          <div className="inspector-section-compact">
-            <label className="section-title-small">External URL</label>
-            <div className="url-input-row">
-              <input
-                type="text"
-                value={device.externalUrl || ''}
-                placeholder="https://device-admin.local/..."
-                onChange={(e) => updateDevice(device.id, { externalUrl: e.target.value })}
-              />
-              <button 
-                className="copy-url-btn"
-                onClick={() => navigator.clipboard.writeText(device.externalUrl || '')}
-                title="Copy URL"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                </svg>
-              </button>
-            </div>
-            {device.externalUrl && (
-              <a 
-                href={device.externalUrl.match(/^https?:\/\//) ? device.externalUrl : `https://${device.externalUrl}`} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="open-url-btn"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                  <polyline points="15 3 21 3 21 9"/>
-                  <line x1="10" y1="14" x2="21" y2="3"/>
-                </svg>
-                Open in Browser
-              </a>
-            )}
-          </div>
+          (() => {
+            const currentStream = getCurrentStream();
+            const urlValue = (isCamera && isDualLens)
+              ? (currentStream?.externalUrl || '')
+              : (device.externalUrl || '');
+
+            return (
+              <div className="inspector-section-compact">
+                <label className="section-title-small">External URL {isCamera && isDualLens ? `(Stream ${activeStreamTab})` : ''}</label>
+                <div className="url-input-row">
+                  <input
+                    type="text"
+                    value={urlValue}
+                    placeholder="https://device-admin.local/..."
+                    onChange={(e) => {
+                      if (isCamera && isDualLens) {
+                        updateStreamProperty(activeStreamTab, 'externalUrl', e.target.value);
+                      } else {
+                        updateDevice(device.id, { externalUrl: e.target.value });
+                      }
+                    }}
+                  />
+                  <button
+                    className="copy-url-btn"
+                    onClick={() => navigator.clipboard.writeText(urlValue)}
+                    title="Copy URL"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                  </button>
+                </div>
+                {urlValue && (
+                  <a
+                    href={urlValue.match(/^https?:\/\//) ? urlValue : `https://${urlValue}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="open-url-btn"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                      <polyline points="15 3 21 3 21 9"/>
+                      <line x1="10" y1="14" x2="21" y2="3"/>
+                    </svg>
+                    Open in Browser
+                  </a>
+                )}
+              </div>
+            );
+          })()
         )}
 
         {/* ===== CAMERA VIEW IMAGE ===== */}
@@ -493,49 +643,81 @@ const InspectorPanel = () => {
 
         {/* ===== TRAFFIC FLOW (cameras only) ===== */}
         {isCamera && (
-          <div className="inspector-section-compact">
-            <label className="section-title-small">Traffic Flow</label>
-            <p className="flow-help-text">
-              This camera detects cars {device.direction === 'in' ? 'entering' : 'leaving'} {currentLevel.name}
-            </p>
-            
-            <div className="flow-config-simple">
-              <div className="flow-direction-row">
-                <button
-                  className={`flow-dir-btn ${device.direction === 'in' ? 'active in' : ''}`}
-                  onClick={() => updateDevice(device.id, { direction: 'in', flowDestination: 'garage-entry' })}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M5 12h14M12 5l7 7-7 7"/>
-                  </svg>
-                  IN
-                </button>
-                <button
-                  className={`flow-dir-btn ${device.direction === 'out' ? 'active out' : ''}`}
-                  onClick={() => updateDevice(device.id, { direction: 'out', flowDestination: 'garage-exit' })}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M19 12H5M12 19l-7-7 7-7"/>
-                  </svg>
-                  OUT
-                </button>
-              </div>
+          (() => {
+            const currentStream = getCurrentStream();
+            const directionValue = isDualLens
+              ? (currentStream?.direction || 'in')
+              : (device.direction || 'in');
+            const flowDestValue = isDualLens
+              ? (currentStream?.flowDestination || (directionValue === 'in' ? 'garage-entry' : 'garage-exit'))
+              : (device.flowDestination || (directionValue === 'in' ? 'garage-entry' : 'garage-exit'));
 
-              <div className="flow-destination">
-                <span className="flow-label">
-                  {device.direction === 'in' ? 'Coming from:' : 'Going to:'}
-                </span>
-                <select
-                  value={device.flowDestination || (device.direction === 'in' ? 'garage-entry' : 'garage-exit')}
-                  onChange={(e) => updateDevice(device.id, { flowDestination: e.target.value })}
-                >
-                  {getFlowOptions().map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+            return (
+              <div className="inspector-section-compact">
+                <label className="section-title-small">Traffic Flow {isDualLens ? `(Stream ${activeStreamTab})` : ''}</label>
+                <p className="flow-help-text">
+                  This {isDualLens ? 'stream' : 'camera'} detects cars {directionValue === 'in' ? 'entering' : 'leaving'} {currentLevel.name}
+                </p>
+
+                <div className="flow-config-simple">
+                  <div className="flow-direction-row">
+                    <button
+                      className={`flow-dir-btn ${directionValue === 'in' ? 'active in' : ''}`}
+                      onClick={() => {
+                        if (isDualLens) {
+                          updateStreamProperty(activeStreamTab, 'direction', 'in');
+                          updateStreamProperty(activeStreamTab, 'flowDestination', 'garage-entry');
+                        } else {
+                          updateDevice(device.id, { direction: 'in', flowDestination: 'garage-entry' });
+                        }
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                      </svg>
+                      IN
+                    </button>
+                    <button
+                      className={`flow-dir-btn ${directionValue === 'out' ? 'active out' : ''}`}
+                      onClick={() => {
+                        if (isDualLens) {
+                          updateStreamProperty(activeStreamTab, 'direction', 'out');
+                          updateStreamProperty(activeStreamTab, 'flowDestination', 'garage-exit');
+                        } else {
+                          updateDevice(device.id, { direction: 'out', flowDestination: 'garage-exit' });
+                        }
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M19 12H5M12 19l-7-7 7-7"/>
+                      </svg>
+                      OUT
+                    </button>
+                  </div>
+
+                  <div className="flow-destination">
+                    <span className="flow-label">
+                      {directionValue === 'in' ? 'Coming from:' : 'Going to:'}
+                    </span>
+                    <select
+                      value={flowDestValue}
+                      onChange={(e) => {
+                        if (isDualLens) {
+                          updateStreamProperty(activeStreamTab, 'flowDestination', e.target.value);
+                        } else {
+                          updateDevice(device.id, { flowDestination: e.target.value });
+                        }
+                      }}
+                    >
+                      {getFlowOptions().map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            );
+          })()
         )}
 
         {/* ===== SPACE SENSOR CONFIGURATION ===== */}
