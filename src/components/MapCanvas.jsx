@@ -122,6 +122,8 @@ const MapCanvas = ({ mapFilter }) => {
       setGarages(updatedGarages);
     };
     reader.readAsDataURL(file);
+    // Reset input so the same file can be re-uploaded after deletion
+    e.target.value = '';
   };
 
   const handleRemoveBackground = () => {
@@ -462,11 +464,12 @@ const MapCanvas = ({ mapFilter }) => {
           {/* Devices (cameras, signs, space monitors) - skip devices pending placement, apply map filter */}
           {currentLevel.devices?.filter(device => {
             if (device.pendingPlacement) return false;
-            if (!mapFilter) return true; // No filter, show all
-            if (mapFilter === 'cameras') return device.type?.startsWith('cam-');
-            if (mapFilter === 'spaceMonitoring') return device.type?.startsWith('sensor-');
-            if (mapFilter === 'signs') return device.type?.startsWith('sign-');
-            return true;
+            if (!mapFilter || mapFilter.length === 0) return true; // No filter, show all
+            // Multi-select: show device if it matches ANY active filter
+            if (mapFilter.includes('cameras') && device.type?.startsWith('cam-')) return true;
+            if (mapFilter.includes('spaceMonitoring') && device.type?.startsWith('sensor-')) return true;
+            if (mapFilter.includes('signs') && device.type?.startsWith('sign-')) return true;
+            return false;
           }).map(device => renderDevice(device))}
         </Layer>
       </Stage>

@@ -133,7 +133,7 @@ const EditorView = () => {
 
   // Local state
   const [activeTab, setActiveTab] = useState('cameras');
-  const [mapFilter, setMapFilter] = useState(null); // null = show all, 'cameras' | 'spaceMonitoring' | 'signs'
+  const [mapFilter, setMapFilter] = useState([]); // [] = show all, or array of active filters: 'cameras', 'spaceMonitoring', 'signs'
   const [showAddForm, setShowAddForm] = useState(false);
   const [showLevelSettings, setShowLevelSettings] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -904,18 +904,18 @@ const EditorView = () => {
             {/* Stats Badges - Clickable Filters */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <button
-                onClick={() => setMapFilter(mapFilter === 'cameras' ? null : 'cameras')}
-                title={mapFilter === 'cameras' ? 'Show all devices' : 'Filter to cameras only'}
+                onClick={() => setMapFilter(prev => prev.includes('cameras') ? prev.filter(f => f !== 'cameras') : [...prev, 'cameras'])}
+                title={mapFilter.includes('cameras') ? 'Remove cameras from filter' : 'Add cameras to filter'}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
                   padding: '8px 14px',
-                  background: mapFilter === 'cameras' ? 'rgba(59, 130, 246, 0.2)' : theme.bgButton,
-                  border: `1px solid ${mapFilter === 'cameras' ? '#3b82f6' : theme.borderSubtle}`,
+                  background: mapFilter.includes('cameras') ? 'rgba(59, 130, 246, 0.2)' : theme.bgButton,
+                  border: `1px solid ${mapFilter.includes('cameras') ? '#3b82f6' : theme.borderSubtle}`,
                   borderRadius: 8,
                   fontSize: 13,
-                  color: mapFilter === 'cameras' ? '#3b82f6' : theme.textSecondary,
+                  color: mapFilter.includes('cameras') ? '#3b82f6' : theme.textSecondary,
                   cursor: 'pointer',
                   transition: 'all 0.15s ease'
                 }}
@@ -923,23 +923,23 @@ const EditorView = () => {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="3" />
                 </svg>
-                <span style={{ fontWeight: 600, color: mapFilter === 'cameras' ? '#3b82f6' : theme.text }}>{stats.cameras}</span>
+                <span style={{ fontWeight: 600, color: mapFilter.includes('cameras') ? '#3b82f6' : theme.text }}>{stats.cameras}</span>
                 <span>Cameras</span>
               </button>
 
               <button
-                onClick={() => setMapFilter(mapFilter === 'spaceMonitoring' ? null : 'spaceMonitoring')}
-                title={mapFilter === 'spaceMonitoring' ? 'Show all devices' : 'Filter to space monitoring only'}
+                onClick={() => setMapFilter(prev => prev.includes('spaceMonitoring') ? prev.filter(f => f !== 'spaceMonitoring') : [...prev, 'spaceMonitoring'])}
+                title={mapFilter.includes('spaceMonitoring') ? 'Remove sensors from filter' : 'Add sensors to filter'}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
                   padding: '8px 14px',
-                  background: mapFilter === 'spaceMonitoring' ? 'rgba(245, 158, 11, 0.2)' : theme.bgButton,
-                  border: `1px solid ${mapFilter === 'spaceMonitoring' ? '#f59e0b' : theme.borderSubtle}`,
+                  background: mapFilter.includes('spaceMonitoring') ? 'rgba(245, 158, 11, 0.2)' : theme.bgButton,
+                  border: `1px solid ${mapFilter.includes('spaceMonitoring') ? '#f59e0b' : theme.borderSubtle}`,
                   borderRadius: 8,
                   fontSize: 13,
-                  color: mapFilter === 'spaceMonitoring' ? '#f59e0b' : theme.textSecondary,
+                  color: mapFilter.includes('spaceMonitoring') ? '#f59e0b' : theme.textSecondary,
                   cursor: 'pointer',
                   transition: 'all 0.15s ease'
                 }}
@@ -947,23 +947,23 @@ const EditorView = () => {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 2v20M2 12h20" />
                 </svg>
-                <span style={{ fontWeight: 600, color: mapFilter === 'spaceMonitoring' ? '#f59e0b' : theme.text }}>{stats.spaceMonitors}</span>
+                <span style={{ fontWeight: 600, color: mapFilter.includes('spaceMonitoring') ? '#f59e0b' : theme.text }}>{stats.spaceMonitors}</span>
                 <span>Sensors</span>
               </button>
 
               <button
-                onClick={() => setMapFilter(mapFilter === 'signs' ? null : 'signs')}
-                title={mapFilter === 'signs' ? 'Show all devices' : 'Filter to signs only'}
+                onClick={() => setMapFilter(prev => prev.includes('signs') ? prev.filter(f => f !== 'signs') : [...prev, 'signs'])}
+                title={mapFilter.includes('signs') ? 'Remove signs from filter' : 'Add signs to filter'}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
                   padding: '8px 14px',
-                  background: mapFilter === 'signs' ? 'rgba(34, 197, 94, 0.2)' : theme.bgButton,
-                  border: `1px solid ${mapFilter === 'signs' ? '#22c55e' : theme.borderSubtle}`,
+                  background: mapFilter.includes('signs') ? 'rgba(34, 197, 94, 0.2)' : theme.bgButton,
+                  border: `1px solid ${mapFilter.includes('signs') ? '#22c55e' : theme.borderSubtle}`,
                   borderRadius: 8,
                   fontSize: 13,
-                  color: mapFilter === 'signs' ? '#22c55e' : theme.textSecondary,
+                  color: mapFilter.includes('signs') ? '#22c55e' : theme.textSecondary,
                   cursor: 'pointer',
                   transition: 'all 0.15s ease'
                 }}
@@ -971,7 +971,7 @@ const EditorView = () => {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <rect x="3" y="3" width="18" height="18" rx="2" />
                 </svg>
-                <span style={{ fontWeight: 600, color: mapFilter === 'signs' ? '#22c55e' : theme.text }}>{stats.signs}</span>
+                <span style={{ fontWeight: 600, color: mapFilter.includes('signs') ? '#22c55e' : theme.text }}>{stats.signs}</span>
                 <span>Signs</span>
               </button>
             </div>
@@ -2081,6 +2081,8 @@ const EditorView = () => {
                       setGarages(updatedGarages);
                     };
                     reader.readAsDataURL(file);
+                    // Reset input so the same file can be re-uploaded after deletion
+                    e.target.value = '';
                   }}
                 />
                 <label
