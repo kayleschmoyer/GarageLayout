@@ -63,8 +63,16 @@ const deviceTypes = {
     { id: 'sign-static', name: 'Static Sign' },
     { id: 'sign-designable', name: 'Designable Sign' }
   ],
-  sensors: [
-    { id: 'sensor-space', name: 'Space Sensor' }
+  sensorGroups: [
+    { id: 'sensor-nwave', name: 'NWAVE' },
+    { id: 'sensor-parksol', name: 'Parksol' },
+    { id: 'sensor-proco', name: 'Proco' },
+    { id: 'sensor-ensight', name: 'Ensight Vision' }
+  ],
+  parkingTypes: [
+    { id: 'ev', name: 'EV' },
+    { id: 'ada', name: 'ADA' },
+    { id: 'normal', name: 'Normal' }
   ]
 };
 
@@ -171,9 +179,14 @@ const EditorView = () => {
     overrideState: 'auto',
     serialAddress: '',
     spotNumber: '',
-    parkingType: 'regular',
+    parkingType: 'normal',
     sensorImage: null,
-    externalUrl: ''
+    externalUrl: '',
+    // Sensor group fields
+    sensorGroup: '',
+    sensorId: '',
+    tempParkingTimeMinutes: '',
+    controllerKey: ''
   });
 
   // Memoized garage and level
@@ -204,21 +217,21 @@ const EditorView = () => {
   // Level devices
   const levelDevices = useMemo(() => safeArray(level?.devices), [level]);
   const cameras = useMemo(() => levelDevices.filter(d => d.type?.startsWith('cam-')), [levelDevices]);
-  const sensors = useMemo(() => levelDevices.filter(d => d.type?.startsWith('sensor-')), [levelDevices]);
+  const spaceMonitors = useMemo(() => levelDevices.filter(d => d.type?.startsWith('sensor-')), [levelDevices]);
   const signs = useMemo(() => levelDevices.filter(d => d.type?.startsWith('sign-')), [levelDevices]);
 
   // Stats
   const stats = useMemo(() => ({
     cameras: cameras.length,
-    sensors: sensors.length,
+    spaceMonitors: spaceMonitors.length,
     signs: signs.length
-  }), [cameras, sensors, signs]);
+  }), [cameras, spaceMonitors, signs]);
 
   // Pending placement counts
   const pendingCameras = useMemo(() => cameras.filter(d => d.pendingPlacement), [cameras]);
   const pendingSigns = useMemo(() => signs.filter(d => d.pendingPlacement), [signs]);
-  const pendingSensors = useMemo(() => sensors.filter(d => d.pendingPlacement), [sensors]);
-  const hasPendingDevices = pendingCameras.length > 0 || pendingSigns.length > 0 || pendingSensors.length > 0;
+  const pendingSpaceMonitors = useMemo(() => spaceMonitors.filter(d => d.pendingPlacement), [spaceMonitors]);
+  const hasPendingDevices = pendingCameras.length > 0 || pendingSigns.length > 0 || pendingSpaceMonitors.length > 0;
 
   // Level navigation
   const currentLevelIndex = useMemo(() => allLevels.findIndex(l => l?.id === selectedLevelId), [allLevels, selectedLevelId]);
@@ -322,18 +335,33 @@ const EditorView = () => {
       overrideState: 'auto',
       serialAddress: '',
       spotNumber: '',
-      parkingType: 'regular',
+      parkingType: 'normal',
       sensorImage: null,
-      externalUrl: ''
+      externalUrl: '',
+      sensorGroup: '',
+      sensorId: '',
+      tempParkingTimeMinutes: '',
+      controllerKey: ''
     });
   }, []);
 
   const addDevice = useCallback(() => {
     if (!newDevice.name.trim()) return;
+    // Determine device type based on active tab and sensor group
+    let deviceType = newDevice.type;
+    if (!deviceType) {
+      if (activeTab === 'spaceMonitoring') {
+        deviceType = newDevice.sensorGroup || 'sensor-nwave';
+      } else if (activeTab === 'cameras') {
+        deviceType = 'cam-fli';
+      } else {
+        deviceType = 'sign-led';
+      }
+    }
     const deviceToAdd = {
       id: Date.now(),
       ...newDevice,
-      type: newDevice.type || (activeTab === 'sensors' ? 'sensor-space' : activeTab === 'cameras' ? 'cam-fli' : 'sign-led'),
+      type: deviceType,
       x: 100 + Math.random() * 200,
       y: 100 + Math.random() * 200
     };
@@ -1142,20 +1170,20 @@ const EditorView = () => {
                         </svg>
                       </button>
                       <button
-                        onClick={() => { setSidebarCollapsed(false); setActiveTab('sensors'); }}
+                        onClick={() => { setSidebarCollapsed(false); setActiveTab('spaceMonitoring'); }}
                         style={{
                           width: 36,
                           height: 36,
                           borderRadius: 8,
-                          border: activeTab === 'sensors' ? '1px solid #3b82f6' : '1px solid transparent',
-                          background: activeTab === 'sensors' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                          color: activeTab === 'sensors' ? '#3b82f6' : theme.textMuted,
+                          border: activeTab === 'spaceMonitoring' ? '1px solid #3b82f6' : '1px solid transparent',
+                          background: activeTab === 'spaceMonitoring' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                          color: activeTab === 'spaceMonitoring' ? '#3b82f6' : theme.textMuted,
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center'
                         }}
-                        title="Sensors"
+                        title="Space Monitoring"
                       >
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                           <path d="M5.636 18.364a9 9 0 010-12.728" />
@@ -1193,8 +1221,8 @@ const EditorView = () => {
                         <span className="tab-label-modern">Signs</span>
                       </button>
                       <button
-                        className={`palette-tab-modern ${activeTab === 'sensors' ? 'active' : ''}`}
-                        onClick={() => { setActiveTab('sensors'); setShowAddForm(false); }}
+                        className={`palette-tab-modern ${activeTab === 'spaceMonitoring' ? 'active' : ''}`}
+                        onClick={() => { setActiveTab('spaceMonitoring'); setShowAddForm(false); }}
                       >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                           <path d="M5.636 18.364a9 9 0 010-12.728" />
@@ -1203,7 +1231,7 @@ const EditorView = () => {
                           <path d="M15.536 8.464a5 5 0 010 7.072" />
                           <path d="M18.364 5.636a9 9 0 010 12.728" />
                         </svg>
-                        <span className="tab-label-modern">Sensors</span>
+                        <span className="tab-label-modern">Space Monitoring</span>
                       </button>
                     </div>
                   </div>
@@ -1212,7 +1240,7 @@ const EditorView = () => {
                     {!showAddForm ? (
                       <>
                         <div className="palette-title">
-                          {activeTab === 'cameras' ? 'Cameras' : activeTab === 'signs' ? 'Signs' : 'Sensors'} on {level.name}
+                          {activeTab === 'cameras' ? 'Cameras' : activeTab === 'signs' ? 'Signs' : 'Space Monitoring'} on {level.name}
                         </div>
 
                         <button
@@ -1220,7 +1248,7 @@ const EditorView = () => {
                           style={{ marginBottom: 16 }}
                           onClick={() => setShowAddForm(true)}
                         >
-                          + Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'signs' ? 'Sign' : 'Sensor'}
+                          + Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'signs' ? 'Sign' : 'Sensor Group'}
                         </button>
 
                         <div className="device-list-modern" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1390,8 +1418,8 @@ const EditorView = () => {
                             </div>
                           ))}
 
-                          {/* Place All Button - show if there are pending sensors */}
-                          {activeTab === 'sensors' && pendingSensors.length > 0 && (
+                          {/* Place All Button - show if there are pending space monitors */}
+                          {activeTab === 'spaceMonitoring' && pendingSpaceMonitors.length > 0 && (
                             <button
                               onClick={placeAllPendingDevices}
                               style={{
@@ -1414,20 +1442,20 @@ const EditorView = () => {
                                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
                                 <circle cx="12" cy="10" r="3" />
                               </svg>
-                              Place All {pendingSensors.length} Imported Sensor{pendingSensors.length > 1 ? 's' : ''} on Canvas
+                              Place All {pendingSpaceMonitors.length} Imported Sensor{pendingSpaceMonitors.length > 1 ? 's' : ''} on Canvas
                             </button>
                           )}
 
-                          {activeTab === 'sensors' && sensors.length === 0 && (
+                          {activeTab === 'spaceMonitoring' && spaceMonitors.length === 0 && (
                             <div className="sidebar-empty-state">
                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
                                 <path d="M12 2v20M2 12h20" />
                               </svg>
-                              <p>No sensors added yet</p>
+                              <p>No space monitors added yet</p>
                             </div>
                           )}
 
-                          {activeTab === 'sensors' && sensors.map(sensor => (
+                          {activeTab === 'spaceMonitoring' && spaceMonitors.map(sensor => (
                             <div
                               key={sensor.id}
                               className="modern-device-item"
@@ -1445,7 +1473,7 @@ const EditorView = () => {
                               <div className="device-info-modern" style={{ flex: 1 }}>
                                 <span className="device-name-modern">{sensor.name}</span>
                                 <span className="device-type-modern" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  {sensor.spotNumber || 'Sensor'}
+                                  {sensor.sensorGroup ? deviceTypes.sensorGroups.find(g => g.id === sensor.sensorGroup)?.name || sensor.spotNumber || 'Space Monitor' : sensor.spotNumber || 'Space Monitor'}
                                   {sensor.pendingPlacement && (
                                     <span style={{ color: '#f59e0b', fontSize: 10 }}>• Not placed</span>
                                   )}
@@ -1490,7 +1518,7 @@ const EditorView = () => {
                             </svg>
                           </button>
                           <span className="form-title">
-                            Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'sensors' ? 'Sensor' : 'Sign'}
+                            Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'spaceMonitoring' ? 'Sensor Group' : 'Sign'}
                             {activeTab === 'cameras' && cameraFormStep === 1 && ' - Hardware Type'}
                             {activeTab === 'cameras' && cameraFormStep === 2 && ' - Camera Type'}
                             {activeTab === 'cameras' && cameraFormStep === 3 && ' - Configuration'}
@@ -1774,7 +1802,7 @@ const EditorView = () => {
                             </>
                           )}
 
-                          {/* === SIGNS & SENSORS FORMS (unchanged) === */}
+                          {/* === SIGNS & SPACE MONITORING FORMS === */}
                           {activeTab !== 'cameras' && (
                             <>
                               {activeTab === 'signs' && (
@@ -1795,16 +1823,108 @@ const EditorView = () => {
                                 </div>
                               )}
 
+                              {activeTab === 'spaceMonitoring' && (
+                                <div className="form-section">
+                                  <label className="form-label-small">Sensor Group</label>
+                                  <div className="type-selector-compact" style={{ flexWrap: 'wrap' }}>
+                                    {deviceTypes.sensorGroups.map(group => (
+                                      <button
+                                        key={group.id}
+                                        className={`type-chip ${newDevice.sensorGroup === group.id ? 'selected' : ''}`}
+                                        onClick={() => setNewDevice({ ...newDevice, sensorGroup: group.id, type: group.id, name: newDevice.name || group.name })}
+                                        style={{ minWidth: '45%' }}
+                                      >
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                          <path d="M5.636 18.364a9 9 0 010-12.728" />
+                                          <circle cx="12" cy="12" r="2" fill="currentColor" />
+                                          <path d="M18.364 5.636a9 9 0 010 12.728" />
+                                        </svg>
+                                        <span>{group.name}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
                               <div className="form-section">
                                 <div className="compact-input-row">
                                   <label>Name</label>
                                   <input
                                     type="text"
-                                    placeholder={activeTab === 'sensors' ? 'Space Sensor 1' : 'Lobby Display'}
+                                    placeholder={activeTab === 'spaceMonitoring' ? 'Sensor Group 1' : 'Lobby Display'}
                                     value={newDevice.name}
                                     onChange={(e) => setNewDevice({ ...newDevice, name: e.target.value })}
                                   />
                                 </div>
+
+                                {activeTab === 'spaceMonitoring' && (
+                                  <>
+                                    <div className="compact-input-row">
+                                      <label>Sensor ID</label>
+                                      <input
+                                        type="text"
+                                        placeholder="SENSOR-001"
+                                        value={newDevice.sensorId}
+                                        onChange={(e) => setNewDevice({ ...newDevice, sensorId: e.target.value })}
+                                      />
+                                    </div>
+                                    <div className="compact-input-row">
+                                      <label>Serial Address</label>
+                                      <input
+                                        type="text"
+                                        placeholder="SN-001234"
+                                        value={newDevice.serialAddress}
+                                        onChange={(e) => setNewDevice({ ...newDevice, serialAddress: e.target.value })}
+                                      />
+                                    </div>
+                                    {newDevice.sensorGroup === 'sensor-nwave' && (
+                                      <>
+                                        <div className="compact-input-row">
+                                          <label>URL (IP Address)</label>
+                                          <input
+                                            type="text"
+                                            placeholder="https://api.nwave.io/..."
+                                            value={newDevice.ipAddress}
+                                            onChange={(e) => setNewDevice({ ...newDevice, ipAddress: e.target.value })}
+                                          />
+                                        </div>
+                                        <div className="compact-input-row">
+                                          <label>API Key (Controller Key)</label>
+                                          <input
+                                            type="text"
+                                            placeholder="Enter API Key"
+                                            value={newDevice.controllerKey}
+                                            onChange={(e) => setNewDevice({ ...newDevice, controllerKey: e.target.value })}
+                                          />
+                                        </div>
+                                      </>
+                                    )}
+                                    <div className="compact-input-row">
+                                      <label>Temp Parking Time (Minutes)</label>
+                                      <input
+                                        type="number"
+                                        placeholder="30"
+                                        value={newDevice.tempParkingTimeMinutes}
+                                        onChange={(e) => setNewDevice({ ...newDevice, tempParkingTimeMinutes: e.target.value })}
+                                      />
+                                    </div>
+                                    <div className="compact-input-row">
+                                      <label>Parking Type</label>
+                                      <div className="parking-type-buttons" style={{ marginTop: 4 }}>
+                                        {deviceTypes.parkingTypes.map(ptype => (
+                                          <button
+                                            key={ptype.id}
+                                            className={`parking-type-btn ${ptype.id === 'ev' ? 'ev' : ptype.id === 'ada' ? 'ada' : ''} ${newDevice.parkingType === ptype.id ? 'active' : ''}`}
+                                            onClick={() => setNewDevice({ ...newDevice, parkingType: ptype.id })}
+                                          >
+                                            {ptype.name}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+
                                 {activeTab === 'signs' && (
                                   <div className="compact-input-row-inline">
                                     <div className="inline-field ip-field">
@@ -1840,7 +1960,7 @@ const EditorView = () => {
                                 <button
                                   className="btn-sidebar-action primary"
                                   onClick={addDevice}
-                                  disabled={!newDevice.name.trim()}
+                                  disabled={!newDevice.name.trim() || (activeTab === 'spaceMonitoring' && !newDevice.sensorGroup)}
                                   style={{ flex: 1 }}
                                 >
                                   Add

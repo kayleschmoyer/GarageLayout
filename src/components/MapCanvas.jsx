@@ -231,7 +231,7 @@ const MapCanvas = () => {
     return lines;
   };
 
-  // Render device (cameras, sensors, signs)
+  // Render device (cameras, space monitors, signs)
   const renderDevice = (device) => {
     const isSelected = selectedDevice?.id === device.id;
     const isCamera = device.type.startsWith('cam-');
@@ -310,7 +310,7 @@ const MapCanvas = () => {
           <Text text="S" fontSize={10} fill="white" fontStyle="bold" offsetX={3} offsetY={5} />
         )}
 
-        {device.type === 'sensor-space' && (
+        {device.type?.startsWith('sensor-') && (
           <>
             <Text text="P" fontSize={11} fill="white" fontStyle="bold" offsetX={4} offsetY={5} />
             {device.parkingType === 'ev' && (
@@ -459,7 +459,7 @@ const MapCanvas = () => {
           {/* Grid */}
           {renderGrid()}
 
-          {/* Devices (cameras, signs, sensors) - skip devices pending placement */}
+          {/* Devices (cameras, signs, space monitors) - skip devices pending placement */}
           {currentLevel.devices?.filter(device => !device.pendingPlacement).map(device => renderDevice(device))}
         </Layer>
       </Stage>

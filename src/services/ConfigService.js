@@ -8,8 +8,9 @@
  *   - C:\Ensight\FLI\Config\{CameraName}.xml
  * - Signs:
  *   - C:\Ensight\EPIC\Config\DevicesConfig.xml
- * - Sensors:
+ * - Space Monitors (Sensor Groups: NWAVE, Parksol, Proco, Ensight Vision):
  *   - C:\Ensight\EPIC\Config\DevicesConfig.xml
+ *   - NWAVE sensors use type SENSORCONTROLLER with API key as controllerKey
  */
 
 import { js2xml, xml2js } from 'xml-js';
@@ -115,11 +116,19 @@ const getCameraConfigType = (type) => {
 
 /**
  * Map device type to DevicesConfig type
+ * @param {string} type - Device type
+ * @param {Object} device - Full device object (optional) for checking sensorGroup
  */
-const getDeviceConfigType = (type) => {
+const getDeviceConfigType = (type, device = null) => {
   if (type?.startsWith('cam-')) return 'CAMERA';
   if (type?.startsWith('sign-')) return 'SIGNCONTROLLER';
-  if (type?.startsWith('sensor-')) return 'SENSOR';
+  if (type?.startsWith('sensor-')) {
+    // For NWAVE sensors, type is SENSORCONTROLLER
+    if (type === 'sensor-nwave' || device?.sensorGroup === 'sensor-nwave') {
+      return 'SENSORCONTROLLER';
+    }
+    return 'SENSOR';
+  }
   return 'UNKNOWN';
 };
 
@@ -313,13 +322,36 @@ export const generateDevicesConfig = (devices) => {
       // Single stream camera or non-camera device
       const ipAddress = device.stream1?.ipAddress || device.ipAddress || '';
       const port = device.stream1?.port || device.port || (device.type?.startsWith('sign-') ? '10001' : '554');
+      const configType = getDeviceConfigType(device.type, device);
 
-      deviceElements.push({
+      const deviceElement = {
         Name: { _text: device.name },
         IPAddress: { _text: ipAddress },
         Port: { _text: port },
-        Type: { _text: getDeviceConfigType(device.type) }
-      });
+        Type: { _text: configType }
+      };
+
+      // Add sensor-specific fields
+      if (device.type?.startsWith('sensor-')) {
+        if (device.sensorId) {
+          deviceElement.SensorID = { _text: device.sensorId };
+        }
+        if (device.serialAddress) {
+          deviceElement.SerialAddress = { _text: device.serialAddress };
+        }
+        if (device.parkingType) {
+          deviceElement.ParkingType = { _text: device.parkingType.toUpperCase() };
+        }
+        if (device.tempParkingTimeMinutes) {
+          deviceElement.TempParkingTimeMinutes = { _text: device.tempParkingTimeMinutes };
+        }
+        // For NWAVE, controllerKey is the API Key
+        if (device.controllerKey && (device.type === 'sensor-nwave' || device.sensorGroup === 'sensor-nwave')) {
+          deviceElement.ControllerKey = { _text: device.controllerKey };
+        }
+      }
+
+      deviceElements.push(deviceElement);
     }
   });
 
@@ -351,16 +383,37 @@ export const parseDevicesConfig = (xmlContent) => {
         const type = getTextContent(dev.Type);
 
         let deviceType = 'cam-fli';
+        let sensorGroup = '';
         if (type === 'CAMERA') deviceType = 'cam-fli';
         else if (type === 'SIGNCONTROLLER') deviceType = 'sign-led';
-        else if (type === 'SENSOR') deviceType = 'sensor-space';
+        else if (type === 'SENSORCONTROLLER') {
+          deviceType = 'sensor-nwave';
+          sensorGroup = 'sensor-nwave';
+        }
+        else if (type === 'SENSOR') {
+          deviceType = 'sensor-space';
+          sensorGroup = 'sensor-space';
+        }
+
+        // Parse additional sensor fields
+        const sensorId = getTextContent(dev.SensorID);
+        const serialAddress = getTextContent(dev.SerialAddress);
+        const parkingType = getTextContent(dev.ParkingType)?.toLowerCase() || 'normal';
+        const tempParkingTimeMinutes = getTextContent(dev.TempParkingTimeMinutes);
+        const controllerKey = getTextContent(dev.ControllerKey);
 
         devices.push({
           id: Date.now() + Math.random(),
           name,
           type: deviceType,
+          sensorGroup,
           ipAddress,
           port,
+          sensorId,
+          serialAddress,
+          parkingType,
+          tempParkingTimeMinutes,
+          controllerKey,
           stream1: {
             ipAddress,
             port,
