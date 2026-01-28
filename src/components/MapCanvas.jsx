@@ -6,7 +6,7 @@ import { AppContext } from '../App';
 
 const GRID_SIZE = 20;
 
-const MapCanvas = () => {
+const MapCanvas = ({ mapFilter }) => {
   const {
     garages,
     setGarages,
@@ -459,8 +459,15 @@ const MapCanvas = () => {
           {/* Grid */}
           {renderGrid()}
 
-          {/* Devices (cameras, signs, space monitors) - skip devices pending placement */}
-          {currentLevel.devices?.filter(device => !device.pendingPlacement).map(device => renderDevice(device))}
+          {/* Devices (cameras, signs, space monitors) - skip devices pending placement, apply map filter */}
+          {currentLevel.devices?.filter(device => {
+            if (device.pendingPlacement) return false;
+            if (!mapFilter) return true; // No filter, show all
+            if (mapFilter === 'cameras') return device.type?.startsWith('cam-');
+            if (mapFilter === 'spaceMonitoring') return device.type?.startsWith('sensor-');
+            if (mapFilter === 'signs') return device.type?.startsWith('sign-');
+            return true;
+          }).map(device => renderDevice(device))}
         </Layer>
       </Stage>
 
