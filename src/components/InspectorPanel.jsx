@@ -153,10 +153,30 @@ const InspectorPanel = () => {
   const isSign = device.type.startsWith('sign-');
   const isDesignableSign = device.type === 'sign-designable';
   const isStaticSign = device.type === 'sign-static';
-  const isSpaceSensor = device.type === 'sensor-space';
-  
+  const isSpaceMonitor = device.type.startsWith('sensor-');
+  const isNwave = device.type === 'sensor-nwave' || device.sensorGroup === 'sensor-nwave';
+
+  // Sensor group labels
+  const sensorGroupLabels = {
+    'sensor-nwave': 'NWAVE',
+    'sensor-parksol': 'Parksol',
+    'sensor-proco': 'Proco',
+    'sensor-ensight': 'Ensight Vision',
+    'sensor-space': 'Space Sensor'
+  };
+
+  const getSensorGroupLabel = () => {
+    if (device.sensorGroup && sensorGroupLabels[device.sensorGroup]) {
+      return sensorGroupLabels[device.sensorGroup];
+    }
+    if (device.type && sensorGroupLabels[device.type]) {
+      return sensorGroupLabels[device.type];
+    }
+    return 'Space Monitor';
+  };
+
   const deviceTypeLabel = isDesignableSign ? 'Designable Sign' : isStaticSign ? 'Static Sign' :
-    isCamera ? 'Camera' : isSpaceSensor ? 'Space Sensor' : 'Device';
+    isCamera ? 'Camera' : isSpaceMonitor ? getSensorGroupLabel() : 'Device';
 
   const isDualLens = device?.hardwareType === 'dual-lens';
 
@@ -720,12 +740,46 @@ const InspectorPanel = () => {
           })()
         )}
 
-        {/* ===== SPACE SENSOR CONFIGURATION ===== */}
-        {isSpaceSensor && (
+        {/* ===== SPACE MONITOR CONFIGURATION ===== */}
+        {isSpaceMonitor && (
           <div className="inspector-section-compact">
-            <label className="section-title-small">Space Configuration</label>
+            <label className="section-title-small">Space Monitor Configuration</label>
+
+            {/* Sensor Group Selection */}
             <div className="compact-row">
-              <label>Serial</label>
+              <label>Sensor Group</label>
+              <select
+                value={device.sensorGroup || device.type || ''}
+                onChange={(e) => updateDevice(device.id, { sensorGroup: e.target.value, type: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  background: '#27272a',
+                  border: '1px solid #3f3f46',
+                  borderRadius: 6,
+                  color: '#fafafa',
+                  fontSize: 13
+                }}
+              >
+                <option value="sensor-nwave">NWAVE</option>
+                <option value="sensor-parksol">Parksol</option>
+                <option value="sensor-proco">Proco</option>
+                <option value="sensor-ensight">Ensight Vision</option>
+              </select>
+            </div>
+
+            <div className="compact-row">
+              <label>Sensor ID</label>
+              <input
+                type="text"
+                value={device.sensorId || ''}
+                placeholder="SENSOR-001"
+                onChange={(e) => updateDevice(device.id, { sensorId: e.target.value })}
+              />
+            </div>
+
+            <div className="compact-row">
+              <label>Serial Address</label>
               <input
                 type="text"
                 value={device.serialAddress || ''}
@@ -733,23 +787,49 @@ const InspectorPanel = () => {
                 onChange={(e) => updateDevice(device.id, { serialAddress: e.target.value })}
               />
             </div>
+
+            {/* NWAVE-specific fields */}
+            {isNwave && (
+              <>
+                <div className="compact-row">
+                  <label>URL (IP Address)</label>
+                  <input
+                    type="text"
+                    value={device.ipAddress || ''}
+                    placeholder="https://api.nwave.io/..."
+                    onChange={(e) => updateDevice(device.id, { ipAddress: e.target.value })}
+                  />
+                </div>
+                <div className="compact-row">
+                  <label>API Key (Controller Key)</label>
+                  <input
+                    type="text"
+                    value={device.controllerKey || ''}
+                    placeholder="Enter API Key"
+                    onChange={(e) => updateDevice(device.id, { controllerKey: e.target.value })}
+                  />
+                </div>
+              </>
+            )}
+
             <div className="compact-row">
-              <label>Spot #</label>
+              <label>Temp Parking Time (Minutes)</label>
               <input
-                type="text"
-                value={device.spotNumber || ''}
-                placeholder="A-101"
-                onChange={(e) => updateDevice(device.id, { spotNumber: e.target.value })}
+                type="number"
+                value={device.tempParkingTimeMinutes || ''}
+                placeholder="30"
+                onChange={(e) => updateDevice(device.id, { tempParkingTimeMinutes: e.target.value })}
               />
             </div>
+
             <div className="compact-row">
-              <label>Type</label>
+              <label>Parking Type</label>
               <div className="parking-type-buttons">
                 <button
-                  className={`parking-type-btn ${device.parkingType === 'regular' ? 'active' : ''}`}
-                  onClick={() => updateDevice(device.id, { parkingType: 'regular' })}
+                  className={`parking-type-btn ${device.parkingType === 'normal' || device.parkingType === 'regular' ? 'active' : ''}`}
+                  onClick={() => updateDevice(device.id, { parkingType: 'normal' })}
                 >
-                  Regular
+                  Normal
                 </button>
                 <button
                   className={`parking-type-btn ev ${device.parkingType === 'ev' ? 'active' : ''}`}
@@ -768,8 +848,8 @@ const InspectorPanel = () => {
           </div>
         )}
 
-        {/* ===== SENSOR LOCATION IMAGE ===== */}
-        {isSpaceSensor && (
+        {/* ===== SPACE MONITOR LOCATION IMAGE ===== */}
+        {isSpaceMonitor && (
           <div className="inspector-section-compact">
             <label className="section-title-small">Location Photo</label>
             {device.sensorImage ? (
@@ -881,8 +961,8 @@ const InspectorPanel = () => {
                 <path d="M18 6L6 18M6 6l12 12"/>
               </svg>
             </button>
-            <img src={device.viewImage || device.sensorImage} alt={isSpaceSensor ? "Sensor location" : "Camera view"} />
-            <div className="image-modal-caption">{device.name} - {isSpaceSensor ? 'Location Photo' : 'Camera View'}</div>
+            <img src={device.viewImage || device.sensorImage} alt={isSpaceMonitor ? "Space monitor location" : "Camera view"} />
+            <div className="image-modal-caption">{device.name} - {isSpaceMonitor ? 'Location Photo' : 'Camera View'}</div>
           </div>
         </div>
       )}
