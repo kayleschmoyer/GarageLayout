@@ -141,6 +141,7 @@ const EditorView = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [cameraFormStep, setCameraFormStep] = useState(1); // 1: hardware, 2: type, 3: config
   const [activeStreamTab, setActiveStreamTab] = useState(1); // For dual lens: 1 or 2
+  const [collapsedSensorGroups, setCollapsedSensorGroups] = useState({}); // Track collapsed state per sensor group
   const configFileInputRef = useRef(null);
   const [newDevice, setNewDevice] = useState({
     type: '',
@@ -233,6 +234,35 @@ const EditorView = () => {
   const pendingSigns = useMemo(() => signs.filter(d => d.pendingPlacement), [signs]);
   const pendingSpaceMonitors = useMemo(() => spaceMonitors.filter(d => d.pendingPlacement), [spaceMonitors]);
   const hasPendingDevices = pendingCameras.length > 0 || pendingSigns.length > 0 || pendingSpaceMonitors.length > 0;
+
+  // Group sensors by sensorGroup for collapsible display
+  const groupedSensors = useMemo(() => {
+    const groups = {};
+    spaceMonitors.forEach(sensor => {
+      const groupId = sensor.sensorGroup || sensor.type || 'other';
+      if (!groups[groupId]) {
+        groups[groupId] = [];
+      }
+      groups[groupId].push(sensor);
+    });
+    return groups;
+  }, [spaceMonitors]);
+
+  // Sensor group labels
+  const sensorGroupLabels = {
+    'sensor-nwave': 'NWAVE',
+    'sensor-parksol': 'Parksol',
+    'sensor-proco': 'Proco',
+    'sensor-ensight': 'Ensight Vision',
+    'sensor-space': 'Space Sensor'
+  };
+
+  const toggleSensorGroup = useCallback((groupId) => {
+    setCollapsedSensorGroups(prev => ({
+      ...prev,
+      [groupId]: !prev[groupId]
+    }));
+  }, []);
 
   // Level navigation
   const currentLevelIndex = useMemo(() => allLevels.findIndex(l => l?.id === selectedLevelId), [allLevels, selectedLevelId]);
@@ -1326,8 +1356,8 @@ const EditorView = () => {
                               <div className="device-info-modern" style={{ flex: 1 }}>
                                 <span className="device-name-modern">{cam.name}</span>
                                 <span className="device-type-modern" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  {cam.ipAddress && <span>{cam.ipAddress}:{cam.port || '554'}</span>}
-                                  {!cam.ipAddress && cam.type}
+                                  {(cam.ipAddress || cam.stream1?.ipAddress) && <span>{cam.ipAddress || cam.stream1?.ipAddress}:{cam.port || cam.stream1?.port || '554'}</span>}
+                                  {!(cam.ipAddress || cam.stream1?.ipAddress) && cam.type}
                                   {cam.pendingPlacement && (
                                     <span style={{ color: '#f59e0b', fontSize: 10 }}>• Not placed</span>
                                   )}
@@ -1474,47 +1504,105 @@ const EditorView = () => {
                             </div>
                           )}
 
-                          {activeTab === 'spaceMonitoring' && spaceMonitors.map(sensor => (
-                            <div
-                              key={sensor.id}
-                              className="modern-device-item"
-                              onClick={() => setSelectedDevice(sensor)}
-                              style={{
-                                background: selectedDevice?.id === sensor.id
-                                  ? 'rgba(245, 158, 11, 0.2)'
-                                  : sensor.pendingPlacement ? 'rgba(245, 158, 11, 0.1)' : undefined,
-                                border: selectedDevice?.id === sensor.id
-                                  ? '1px solid rgba(245, 158, 11, 0.6)'
-                                  : sensor.pendingPlacement ? '1px dashed rgba(245, 158, 11, 0.4)' : undefined,
-                                cursor: 'pointer'
-                              }}>
-                              <div className="device-icon-wrapper">{getDeviceIcon(sensor.type)}</div>
-                              <div className="device-info-modern" style={{ flex: 1 }}>
-                                <span className="device-name-modern">{sensor.name}</span>
-                                <span className="device-type-modern" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  {sensor.sensorGroup ? deviceTypes.sensorGroups.find(g => g.id === sensor.sensorGroup)?.name || sensor.spotNumber || 'Space Monitor' : sensor.spotNumber || 'Space Monitor'}
-                                  {sensor.pendingPlacement && (
-                                    <span style={{ color: '#f59e0b', fontSize: 10 }}>• Not placed</span>
-                                  )}
-                                </span>
-                              </div>
-                              {sensor.pendingPlacement && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); placeDeviceOnCanvas(sensor.id); }}
-                                  title="Place on canvas"
+                          {activeTab === 'spaceMonitoring' && spaceMonitors.length > 0 && Object.entries(groupedSensors).map(([groupId, sensors]) => (
+                            <div key={groupId} style={{ marginBottom: 4 }}>
+                              {/* Collapsible Group Header */}
+                              <button
+                                onClick={() => toggleSensorGroup(groupId)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  width: '100%',
+                                  padding: '8px 10px',
+                                  background: theme.bgHover,
+                                  border: `1px solid ${theme.borderSubtle}`,
+                                  borderRadius: 6,
+                                  cursor: 'pointer',
+                                  color: theme.text,
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.03em'
+                                }}
+                              >
+                                <svg
+                                  width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
                                   style={{
-                                    padding: '4px 8px',
-                                    background: '#f59e0b',
-                                    border: 'none',
-                                    borderRadius: 4,
-                                    color: 'white',
-                                    fontSize: 10,
-                                    cursor: 'pointer',
-                                    whiteSpace: 'nowrap'
+                                    transition: 'transform 0.2s ease',
+                                    transform: collapsedSensorGroups[groupId] ? 'rotate(-90deg)' : 'rotate(0deg)'
                                   }}
                                 >
-                                  Place
-                                </button>
+                                  <path d="M6 9l6 6 6-6" />
+                                </svg>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.5">
+                                  <path d="M5.636 18.364a9 9 0 010-12.728" />
+                                  <circle cx="12" cy="12" r="2" fill="#f59e0b" />
+                                  <path d="M18.364 5.636a9 9 0 010 12.728" />
+                                </svg>
+                                <span style={{ flex: 1, textAlign: 'left' }}>
+                                  {sensorGroupLabels[groupId] || groupId}
+                                </span>
+                                <span style={{
+                                  background: 'rgba(245, 158, 11, 0.2)',
+                                  color: '#f59e0b',
+                                  padding: '2px 8px',
+                                  borderRadius: 10,
+                                  fontSize: 11,
+                                  fontWeight: 600
+                                }}>
+                                  {sensors.length}
+                                </span>
+                              </button>
+
+                              {/* Collapsible Sensor List */}
+                              {!collapsedSensorGroups[groupId] && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6, paddingLeft: 8 }}>
+                                  {sensors.map(sensor => (
+                                    <div
+                                      key={sensor.id}
+                                      className="modern-device-item"
+                                      onClick={() => setSelectedDevice(sensor)}
+                                      style={{
+                                        background: selectedDevice?.id === sensor.id
+                                          ? 'rgba(245, 158, 11, 0.2)'
+                                          : sensor.pendingPlacement ? 'rgba(245, 158, 11, 0.1)' : undefined,
+                                        border: selectedDevice?.id === sensor.id
+                                          ? '1px solid rgba(245, 158, 11, 0.6)'
+                                          : sensor.pendingPlacement ? '1px dashed rgba(245, 158, 11, 0.4)' : undefined,
+                                        cursor: 'pointer'
+                                      }}>
+                                      <div className="device-icon-wrapper">{getDeviceIcon(sensor.type)}</div>
+                                      <div className="device-info-modern" style={{ flex: 1 }}>
+                                        <span className="device-name-modern">{sensor.name}</span>
+                                        <span className="device-type-modern" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                          {sensor.sensorId || sensor.serialAddress || 'Space Monitor'}
+                                          {sensor.pendingPlacement && (
+                                            <span style={{ color: '#f59e0b', fontSize: 10 }}>• Not placed</span>
+                                          )}
+                                        </span>
+                                      </div>
+                                      {sensor.pendingPlacement && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); placeDeviceOnCanvas(sensor.id); }}
+                                          title="Place on canvas"
+                                          style={{
+                                            padding: '4px 8px',
+                                            background: '#f59e0b',
+                                            border: 'none',
+                                            borderRadius: 4,
+                                            color: 'white',
+                                            fontSize: 10,
+                                            cursor: 'pointer',
+                                            whiteSpace: 'nowrap'
+                                          }}
+                                        >
+                                          Place
+                                        </button>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
                               )}
                             </div>
                           ))}

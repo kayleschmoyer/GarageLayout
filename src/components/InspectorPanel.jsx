@@ -66,6 +66,13 @@ const InspectorPanel = () => {
     setGarages(updatedGarages);
   };
 
+  // Remove device from map only (keeps it in the device list as pending placement)
+  const removeFromMap = (deviceId) => {
+    updateDevice(deviceId, { pendingPlacement: true, x: undefined, y: undefined });
+    setSelectedDevice(null);
+  };
+
+  // Permanently delete device from the level
   const deleteDevice = (deviceId) => {
     const updatedGarages = garages.map(g => {
       if (g.id === selectedGarageId) {
@@ -370,10 +377,10 @@ const InspectorPanel = () => {
               const currentStream = getCurrentStream();
               const ipValue = isDualLens
                 ? (currentStream?.ipAddress || '')
-                : (device.ipAddress || '');
+                : (device.ipAddress || device.stream1?.ipAddress || '');
               const portValue = isDualLens
                 ? (currentStream?.port || '')
-                : (device.port || '');
+                : (device.port || device.stream1?.port || '');
 
               return (
                 <div className="compact-row-inline">
@@ -387,7 +394,10 @@ const InspectorPanel = () => {
                         if (isDualLens) {
                           updateStreamProperty(activeStreamTab, 'ipAddress', e.target.value);
                         } else {
-                          updateDevice(device.id, { ipAddress: e.target.value });
+                          updateDevice(device.id, {
+                            ipAddress: e.target.value,
+                            stream1: { ...device.stream1, ipAddress: e.target.value }
+                          });
                         }
                       }}
                     />
@@ -402,7 +412,10 @@ const InspectorPanel = () => {
                         if (isDualLens) {
                           updateStreamProperty(activeStreamTab, 'port', e.target.value);
                         } else {
-                          updateDevice(device.id, { port: e.target.value });
+                          updateDevice(device.id, {
+                            port: e.target.value,
+                            stream1: { ...device.stream1, port: e.target.value }
+                          });
                         }
                       }}
                     />
@@ -942,9 +955,30 @@ const InspectorPanel = () => {
         </div>
       </div>
 
-      {/* Delete button - fixed at bottom */}
-      <div className="inspector-footer-compact">
-        <button className="btn-delete-compact" onClick={() => deleteDevice(device.id)}>
+      {/* Action buttons - fixed at bottom */}
+      <div className="inspector-footer-compact" style={{ display: 'flex', gap: 8 }}>
+        <button
+          className="btn-delete-compact"
+          onClick={() => removeFromMap(device.id)}
+          style={{
+            flex: 1,
+            background: 'rgba(245, 158, 11, 0.1)',
+            border: '1px solid rgba(245, 158, 11, 0.3)',
+            color: '#f59e0b'
+          }}
+          title="Remove from map but keep in device list"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+          Remove from Map
+        </button>
+        <button
+          className="btn-delete-compact"
+          onClick={() => deleteDevice(device.id)}
+          style={{ flex: 1 }}
+          title="Permanently delete device"
+        >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
           </svg>

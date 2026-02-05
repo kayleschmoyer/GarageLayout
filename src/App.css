@@ -4830,7 +4830,7 @@
 }
 
 [data-joy-color-scheme="dark"] .inspector-device-name {
-  color: var(--joy-palette-neutral-100);
+  color: #fafafa;
 }
 
 [data-joy-color-scheme="dark"] .compact-row label {
