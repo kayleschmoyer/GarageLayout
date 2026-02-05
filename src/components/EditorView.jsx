@@ -688,6 +688,19 @@ const EditorView = () => {
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
 
+    // Get current date/time for PDF
+    const timezone = getTimezoneForState(garage.state);
+    const now = new Date();
+    const dateTimeString = now.toLocaleString('en-US', {
+      timeZone: timezone,
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+
     for (let levelIndex = 0; levelIndex < garage.levels.length; levelIndex++) {
       const currentLevel = garage.levels[levelIndex];
       if (levelIndex > 0) pdf.addPage();
@@ -711,7 +724,13 @@ const EditorView = () => {
       pdf.setTextColor(255, 255, 255);
       pdf.setFontSize(22);
       pdf.setFont('helvetica', 'bold');
-      pdf.text(garage.name, 34, 35);
+      pdf.text(garage.name, 34, 28);
+
+      // Date/Time
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(161, 161, 170);
+      pdf.text(dateTimeString + (garage.state ? ` (${garage.state})` : ''), 34, 44);
 
       // Level badge
       const levelText = currentLevel.name;
@@ -1853,6 +1872,16 @@ const EditorView = () => {
                                           style={inputStyle}
                                         />
                                       </div>
+                                      <div className="form-field-stack" style={{ marginTop: 12 }}>
+                                        <label className="form-label-small">MAC Address</label>
+                                        <input
+                                          type="text"
+                                          placeholder="00:1A:2B:3C:4D:5E"
+                                          value={newDevice.macAddress || ''}
+                                          onChange={(e) => setNewDevice({ ...newDevice, macAddress: e.target.value })}
+                                          style={inputStyle}
+                                        />
+                                      </div>
                                       <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
                                         <div className="form-field-stack" style={{ flex: 2 }}>
                                           <label className="form-label-small">IP Address</label>
@@ -2049,6 +2078,18 @@ const EditorView = () => {
                                   />
                                 </div>
 
+                                {activeTab === 'signs' && (
+                                  <div className="compact-input-row">
+                                    <label>MAC Address</label>
+                                    <input
+                                      type="text"
+                                      placeholder="00:1A:2B:3C:4D:5E"
+                                      value={newDevice.macAddress || ''}
+                                      onChange={(e) => setNewDevice({ ...newDevice, macAddress: e.target.value })}
+                                    />
+                                  </div>
+                                )}
+
                                 {activeTab === 'spaceMonitoring' && (
                                   <>
                                     <div className="compact-input-row">
@@ -2118,26 +2159,37 @@ const EditorView = () => {
                                 )}
 
                                 {activeTab === 'signs' && (
-                                  <div className="compact-input-row-inline">
-                                    <div className="inline-field ip-field">
-                                      <label>IP</label>
+                                  <>
+                                    <div className="compact-input-row-inline">
+                                      <div className="inline-field ip-field">
+                                        <label>IP</label>
+                                        <input
+                                          type="text"
+                                          placeholder="10.16.6.45"
+                                          value={newDevice.ipAddress}
+                                          onChange={(e) => setNewDevice({ ...newDevice, ipAddress: e.target.value })}
+                                        />
+                                      </div>
+                                      <div className="inline-field port-field">
+                                        <label>Port</label>
+                                        <input
+                                          type="text"
+                                          placeholder="80"
+                                          value={newDevice.port}
+                                          onChange={(e) => setNewDevice({ ...newDevice, port: e.target.value })}
+                                        />
+                                      </div>
+                                    </div>
+                                    <div className="compact-input-row">
+                                      <label>External URL (Optional)</label>
                                       <input
                                         type="text"
-                                        placeholder="10.16.6.45"
-                                        value={newDevice.ipAddress}
-                                        onChange={(e) => setNewDevice({ ...newDevice, ipAddress: e.target.value })}
+                                        placeholder="https://..."
+                                        value={newDevice.externalUrl || ''}
+                                        onChange={(e) => setNewDevice({ ...newDevice, externalUrl: e.target.value })}
                                       />
                                     </div>
-                                    <div className="inline-field port-field">
-                                      <label>Port</label>
-                                      <input
-                                        type="text"
-                                        placeholder="80"
-                                        value={newDevice.port}
-                                        onChange={(e) => setNewDevice({ ...newDevice, port: e.target.value })}
-                                      />
-                                    </div>
-                                  </div>
+                                  </>
                                 )}
                               </div>
 

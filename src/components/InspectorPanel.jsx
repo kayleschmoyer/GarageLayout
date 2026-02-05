@@ -259,12 +259,12 @@ const InspectorPanel = () => {
         {isSign && (
           <div className="inspector-section-compact">
             <label className="section-title-small">Sign Type</label>
-            <select 
+            <select
               className="sign-type-select"
               value={device.type}
               onChange={(e) => {
                 const newType = e.target.value;
-                const updates = { 
+                const updates = {
                   type: newType,
                   previewUrl: newType === 'sign-designable' ? (device.previewUrl || '') : undefined,
                   displayMapping: newType === 'sign-static' ? (device.displayMapping || [selectedLevelId]) : undefined,
@@ -273,8 +273,9 @@ const InspectorPanel = () => {
                 updateDevice(device.id, updates);
               }}
             >
-              <option value="sign-designable">Designable Sign</option>
+              <option value="sign-led">LED Sign</option>
               <option value="sign-static">Static Sign</option>
+              <option value="sign-designable">Designable Sign</option>
             </select>
           </div>
         )}
