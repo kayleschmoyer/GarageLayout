@@ -175,7 +175,8 @@ export const generateCameraHubConfig = (cameras) => {
           Type: { _text: getCameraConfigType(streamType) },
           RecordRawClips: { _text: DEFAULT_CAMERA_SETTINGS.RecordRawClips },
           Enabled: { _text: DEFAULT_CAMERA_SETTINGS.Enabled },
-          MotionThreshold: { _text: DEFAULT_CAMERA_SETTINGS.MotionThreshold }
+          MotionThreshold: { _text: DEFAULT_CAMERA_SETTINGS.MotionThreshold },
+          ...(cam.macAddress && { MACAddress: { _text: cam.macAddress } })
         });
 
         // Add to FLI cameras if type is FLI
@@ -187,7 +188,8 @@ export const generateCameraHubConfig = (cameras) => {
             Type: { _text: 'FLI' },
             RecordRawClips: { _text: DEFAULT_CAMERA_SETTINGS.RecordRawClips },
             Enabled: { _text: DEFAULT_CAMERA_SETTINGS.Enabled },
-            MotionThreshold: { _text: DEFAULT_CAMERA_SETTINGS.MotionThreshold }
+            MotionThreshold: { _text: DEFAULT_CAMERA_SETTINGS.MotionThreshold },
+            ...(cam.macAddress && { MACAddress: { _text: cam.macAddress } })
           });
         }
       });
@@ -204,7 +206,8 @@ export const generateCameraHubConfig = (cameras) => {
         Type: { _text: getCameraConfigType(cam.type) },
         RecordRawClips: { _text: DEFAULT_CAMERA_SETTINGS.RecordRawClips },
         Enabled: { _text: DEFAULT_CAMERA_SETTINGS.Enabled },
-        MotionThreshold: { _text: DEFAULT_CAMERA_SETTINGS.MotionThreshold }
+        MotionThreshold: { _text: DEFAULT_CAMERA_SETTINGS.MotionThreshold },
+        ...(cam.macAddress && { MACAddress: { _text: cam.macAddress } })
       });
 
       // Add to FLI cameras if type is FLI
@@ -216,7 +219,8 @@ export const generateCameraHubConfig = (cameras) => {
           Type: { _text: 'FLI' },
           RecordRawClips: { _text: DEFAULT_CAMERA_SETTINGS.RecordRawClips },
           Enabled: { _text: DEFAULT_CAMERA_SETTINGS.Enabled },
-          MotionThreshold: { _text: DEFAULT_CAMERA_SETTINGS.MotionThreshold }
+          MotionThreshold: { _text: DEFAULT_CAMERA_SETTINGS.MotionThreshold },
+          ...(cam.macAddress && { MACAddress: { _text: cam.macAddress } })
         });
       }
     }
@@ -255,6 +259,7 @@ export const parseCameraHubConfig = (xmlContent) => {
         const name = getTextContent(cam.Name);
         const rtspUrl = getTextContent(cam.RTSPUrl);
         const type = getTextContent(cam.Type);
+        const macAddress = getTextContent(cam.MACAddress);
 
         const ipAddress = extractIPFromRTSP(rtspUrl);
         const port = extractPortFromRTSP(rtspUrl);
@@ -266,6 +271,7 @@ export const parseCameraHubConfig = (xmlContent) => {
           hardwareType: 'bullet',
           ipAddress,
           port,
+          macAddress,
           externalUrl: rtspUrl,
           stream1: {
             ipAddress,
@@ -315,7 +321,8 @@ export const generateDevicesConfig = (devices) => {
           Name: { _text: streamName },
           IPAddress: { _text: ipAddress },
           Port: { _text: port },
-          Type: { _text: 'CAMERA' }
+          Type: { _text: 'CAMERA' },
+          ...(device.macAddress && { MACAddress: { _text: device.macAddress } })
         });
       });
     } else {
@@ -330,6 +337,11 @@ export const generateDevicesConfig = (devices) => {
         Port: { _text: port },
         Type: { _text: configType }
       };
+
+      // Add MAC Address for cameras and signs
+      if ((device.type?.startsWith('cam-') || device.type?.startsWith('sign-')) && device.macAddress) {
+        deviceElement.MACAddress = { _text: device.macAddress };
+      }
 
       // Add sensor-specific fields
       if (device.type?.startsWith('sensor-')) {
@@ -401,6 +413,7 @@ export const parseDevicesConfig = (xmlContent) => {
         const parkingType = getTextContent(dev.ParkingType)?.toLowerCase() || 'normal';
         const tempParkingTimeMinutes = getTextContent(dev.TempParkingTimeMinutes);
         const controllerKey = getTextContent(dev.ControllerKey);
+        const macAddress = getTextContent(dev.MACAddress);
 
         devices.push({
           id: Date.now() + Math.random(),
@@ -409,6 +422,7 @@ export const parseDevicesConfig = (xmlContent) => {
           sensorGroup,
           ipAddress,
           port,
+          macAddress,
           sensorId,
           serialAddress,
           parkingType,
