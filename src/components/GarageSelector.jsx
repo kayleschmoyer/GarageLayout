@@ -505,14 +505,28 @@ const GarageSelector = () => {
                   const deviceCounts = garageLevels.reduce((acc, level) => {
                     safeArray(level?.devices).forEach(device => {
                       const type = device?.type || '';
-                      if (type.startsWith('cam-')) acc.cameras++;
-                      else if (type.startsWith('sign-')) acc.signs++;
-                      else if (type.startsWith('sensor-')) acc.sensors++;
+                      if (type === 'cam-fli') acc.camFli++;
+                      else if (type === 'cam-lpr') acc.camLpr++;
+                      else if (type === 'cam-people') acc.camPeople++;
+                      else if (type === 'sign-led') acc.signLed++;
+                      else if (type === 'sign-static') acc.signStatic++;
+                      else if (type === 'sign-designable') acc.signDesignable++;
+                      else if (type === 'sensor-nwave') acc.sensorNwave++;
+                      else if (type === 'sensor-parksol') acc.sensorParksol++;
+                      else if (type === 'sensor-proco') acc.sensorProco++;
+                      else if (type === 'sensor-ensight') acc.sensorEnsight++;
                     });
                     return acc;
-                  }, { cameras: 0, signs: 0, sensors: 0 });
+                  }, {
+                    camFli: 0, camLpr: 0, camPeople: 0,
+                    signLed: 0, signStatic: 0, signDesignable: 0,
+                    sensorNwave: 0, sensorParksol: 0, sensorProco: 0, sensorEnsight: 0
+                  });
 
-                  const totalDevices = deviceCounts.cameras + deviceCounts.signs + deviceCounts.sensors;
+                  const totalCameras = deviceCounts.camFli + deviceCounts.camLpr + deviceCounts.camPeople;
+                  const totalSigns = deviceCounts.signLed + deviceCounts.signStatic + deviceCounts.signDesignable;
+                  const totalSensors = deviceCounts.sensorNwave + deviceCounts.sensorParksol + deviceCounts.sensorProco + deviceCounts.sensorEnsight;
+                  const totalDevices = totalCameras + totalSigns + totalSensors;
                   const totalSpots = garageLevels.reduce((acc, l) => acc + (typeof l?.totalSpots === 'number' ? l.totalSpots : 0), 0);
 
                   return (
@@ -564,30 +578,66 @@ const GarageSelector = () => {
                           <span>{totalSpots} Spots</span>
                         </div>
 
-                        <div className="card-meta card-devices">
-                          <span title="Cameras" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M23 7l-7 5 7 5V7z" />
-                              <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-                            </svg>
-                            {deviceCounts.cameras}
-                          </span>
-                          <span title="Signs" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                              <line x1="9" y1="9" x2="15" y2="9" />
-                              <line x1="9" y1="15" x2="15" y2="15" />
-                            </svg>
-                            {deviceCounts.signs}
-                          </span>
-                          <span title="Space Monitors" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <circle cx="12" cy="12" r="3" />
-                              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                            </svg>
-                            {deviceCounts.sensors}
-                          </span>
-                          <span style={{ marginLeft: 'auto', opacity: 0.7 }}>{totalDevices} devices</span>
+                        <div className="card-equipment-breakdown">
+                          {totalCameras > 0 && (
+                            <div className="equipment-category">
+                              <div className="equipment-category-header">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M23 7l-7 5 7 5V7z" />
+                                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                                </svg>
+                                <span className="equipment-category-label">Cameras</span>
+                                <span className="equipment-category-total">{totalCameras}</span>
+                              </div>
+                              <div className="equipment-type-list">
+                                {deviceCounts.camFli > 0 && <span className="equipment-type-tag">FLI: {deviceCounts.camFli}</span>}
+                                {deviceCounts.camLpr > 0 && <span className="equipment-type-tag">LPR: {deviceCounts.camLpr}</span>}
+                                {deviceCounts.camPeople > 0 && <span className="equipment-type-tag">People: {deviceCounts.camPeople}</span>}
+                              </div>
+                            </div>
+                          )}
+                          {totalSigns > 0 && (
+                            <div className="equipment-category">
+                              <div className="equipment-category-header">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                  <line x1="9" y1="9" x2="15" y2="9" />
+                                  <line x1="9" y1="15" x2="15" y2="15" />
+                                </svg>
+                                <span className="equipment-category-label">Signs</span>
+                                <span className="equipment-category-total">{totalSigns}</span>
+                              </div>
+                              <div className="equipment-type-list">
+                                {deviceCounts.signLed > 0 && <span className="equipment-type-tag">LED: {deviceCounts.signLed}</span>}
+                                {deviceCounts.signStatic > 0 && <span className="equipment-type-tag">Static: {deviceCounts.signStatic}</span>}
+                                {deviceCounts.signDesignable > 0 && <span className="equipment-type-tag">Designable: {deviceCounts.signDesignable}</span>}
+                              </div>
+                            </div>
+                          )}
+                          {totalSensors > 0 && (
+                            <div className="equipment-category">
+                              <div className="equipment-category-header">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <circle cx="12" cy="12" r="3" />
+                                  <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42m12.72-12.72l1.42-1.42" />
+                                </svg>
+                                <span className="equipment-category-label">Sensors</span>
+                                <span className="equipment-category-total">{totalSensors}</span>
+                              </div>
+                              <div className="equipment-type-list">
+                                {deviceCounts.sensorNwave > 0 && <span className="equipment-type-tag">NWAVE: {deviceCounts.sensorNwave}</span>}
+                                {deviceCounts.sensorParksol > 0 && <span className="equipment-type-tag">Parksol: {deviceCounts.sensorParksol}</span>}
+                                {deviceCounts.sensorProco > 0 && <span className="equipment-type-tag">Proco: {deviceCounts.sensorProco}</span>}
+                                {deviceCounts.sensorEnsight > 0 && <span className="equipment-type-tag">Ensight: {deviceCounts.sensorEnsight}</span>}
+                              </div>
+                            </div>
+                          )}
+                          {totalDevices === 0 && (
+                            <div className="equipment-empty">No devices configured</div>
+                          )}
+                          <div className="equipment-total-row">
+                            <span>{totalDevices} total devices</span>
+                          </div>
                         </div>
                       </div>
                     </div>

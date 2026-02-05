@@ -125,18 +125,33 @@ const LevelSelector = () => {
   }, [garage]);
 
   const stats = useMemo(() => {
-    if (!garage) return { levels: 0, spots: 0, devices: 0 };
+    if (!garage) return { levels: 0, spots: 0, devices: 0, camFli: 0, camLpr: 0, camPeople: 0, signLed: 0, signStatic: 0, signDesignable: 0, sensorNwave: 0, sensorParksol: 0, sensorProco: 0, sensorEnsight: 0 };
     const levels = safeArray(garage.levels);
     let spots = 0;
     let devices = 0;
+    const counts = { camFli: 0, camLpr: 0, camPeople: 0, signLed: 0, signStatic: 0, signDesignable: 0, sensorNwave: 0, sensorParksol: 0, sensorProco: 0, sensorEnsight: 0 };
     for (let i = 0; i < levels.length; i++) {
       const l = levels[i];
       if (l) {
         spots += safeNumber(l.totalSpots, 0);
-        devices += safeArray(l.devices).length;
+        const devs = safeArray(l.devices);
+        devices += devs.length;
+        for (let j = 0; j < devs.length; j++) {
+          const type = devs[j]?.type || '';
+          if (type === 'cam-fli') counts.camFli++;
+          else if (type === 'cam-lpr') counts.camLpr++;
+          else if (type === 'cam-people') counts.camPeople++;
+          else if (type === 'sign-led') counts.signLed++;
+          else if (type === 'sign-static') counts.signStatic++;
+          else if (type === 'sign-designable') counts.signDesignable++;
+          else if (type === 'sensor-nwave') counts.sensorNwave++;
+          else if (type === 'sensor-parksol') counts.sensorParksol++;
+          else if (type === 'sensor-proco') counts.sensorProco++;
+          else if (type === 'sensor-ensight') counts.sensorEnsight++;
+        }
       }
     }
-    return { levels: levels.length, spots, devices };
+    return { levels: levels.length, spots, devices, ...counts };
   }, [garage]);
 
   const toggleMode = useCallback(() => {
@@ -420,6 +435,55 @@ const LevelSelector = () => {
                   <span>{stats.devices} Devices</span>
                 </div>
               </div>
+
+              {stats.devices > 0 && (
+                <div className="garage-equipment-summary">
+                  {(stats.camFli + stats.camLpr + stats.camPeople) > 0 && (
+                    <div className="equipment-summary-group">
+                      <span className="equipment-summary-icon">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M23 7l-7 5 7 5V7z" />
+                          <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                        </svg>
+                      </span>
+                      <span className="equipment-summary-label">Cameras:</span>
+                      {stats.camFli > 0 && <span className="equipment-type-tag">FLI: {stats.camFli}</span>}
+                      {stats.camLpr > 0 && <span className="equipment-type-tag">LPR: {stats.camLpr}</span>}
+                      {stats.camPeople > 0 && <span className="equipment-type-tag">People: {stats.camPeople}</span>}
+                    </div>
+                  )}
+                  {(stats.signLed + stats.signStatic + stats.signDesignable) > 0 && (
+                    <div className="equipment-summary-group">
+                      <span className="equipment-summary-icon">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                          <line x1="9" y1="9" x2="15" y2="9" />
+                          <line x1="9" y1="15" x2="15" y2="15" />
+                        </svg>
+                      </span>
+                      <span className="equipment-summary-label">Signs:</span>
+                      {stats.signLed > 0 && <span className="equipment-type-tag">LED: {stats.signLed}</span>}
+                      {stats.signStatic > 0 && <span className="equipment-type-tag">Static: {stats.signStatic}</span>}
+                      {stats.signDesignable > 0 && <span className="equipment-type-tag">Designable: {stats.signDesignable}</span>}
+                    </div>
+                  )}
+                  {(stats.sensorNwave + stats.sensorParksol + stats.sensorProco + stats.sensorEnsight) > 0 && (
+                    <div className="equipment-summary-group">
+                      <span className="equipment-summary-icon">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="3" />
+                          <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42m12.72-12.72l1.42-1.42" />
+                        </svg>
+                      </span>
+                      <span className="equipment-summary-label">Sensors:</span>
+                      {stats.sensorNwave > 0 && <span className="equipment-type-tag">NWAVE: {stats.sensorNwave}</span>}
+                      {stats.sensorParksol > 0 && <span className="equipment-type-tag">Parksol: {stats.sensorParksol}</span>}
+                      {stats.sensorProco > 0 && <span className="equipment-type-tag">Proco: {stats.sensorProco}</span>}
+                      {stats.sensorEnsight > 0 && <span className="equipment-type-tag">Ensight: {stats.sensorEnsight}</span>}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="content-area">
@@ -430,7 +494,25 @@ const LevelSelector = () => {
               <div className="levels-grid">
                 {garageLevels.map((level, index) => {
                   if (!level || level.id == null) return null;
-                  const deviceCount = safeArray(level.devices).length;
+                  const devices = safeArray(level.devices);
+                  const deviceCount = devices.length;
+                  const levelCounts = devices.reduce((acc, d) => {
+                    const type = d?.type || '';
+                    if (type === 'cam-fli') acc.camFli++;
+                    else if (type === 'cam-lpr') acc.camLpr++;
+                    else if (type === 'cam-people') acc.camPeople++;
+                    else if (type === 'sign-led') acc.signLed++;
+                    else if (type === 'sign-static') acc.signStatic++;
+                    else if (type === 'sign-designable') acc.signDesignable++;
+                    else if (type === 'sensor-nwave') acc.sensorNwave++;
+                    else if (type === 'sensor-parksol') acc.sensorParksol++;
+                    else if (type === 'sensor-proco') acc.sensorProco++;
+                    else if (type === 'sensor-ensight') acc.sensorEnsight++;
+                    return acc;
+                  }, { camFli: 0, camLpr: 0, camPeople: 0, signLed: 0, signStatic: 0, signDesignable: 0, sensorNwave: 0, sensorParksol: 0, sensorProco: 0, sensorEnsight: 0 });
+                  const levelTotalCameras = levelCounts.camFli + levelCounts.camLpr + levelCounts.camPeople;
+                  const levelTotalSigns = levelCounts.signLed + levelCounts.signStatic + levelCounts.signDesignable;
+                  const levelTotalSensors = levelCounts.sensorNwave + levelCounts.sensorParksol + levelCounts.sensorProco + levelCounts.sensorEnsight;
                   const gradients = mode === 'dark' ? LEVEL_GRADIENTS_DARK : LEVEL_GRADIENTS_LIGHT;
                   const gradientIndex = index % gradients.length;
                   const gradient = level.bgImage
@@ -505,6 +587,46 @@ const LevelSelector = () => {
                             <span className="level-stat-label">Devices</span>
                           </div>
                         </div>
+
+                        {deviceCount > 0 && (
+                          <div className="level-equipment-breakdown">
+                            {levelTotalCameras > 0 && (
+                              <div className="level-equip-row">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M23 7l-7 5 7 5V7z" />
+                                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                                </svg>
+                                {levelCounts.camFli > 0 && <span className="level-equip-tag">FLI: {levelCounts.camFli}</span>}
+                                {levelCounts.camLpr > 0 && <span className="level-equip-tag">LPR: {levelCounts.camLpr}</span>}
+                                {levelCounts.camPeople > 0 && <span className="level-equip-tag">People: {levelCounts.camPeople}</span>}
+                              </div>
+                            )}
+                            {levelTotalSigns > 0 && (
+                              <div className="level-equip-row">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                  <line x1="9" y1="9" x2="15" y2="9" />
+                                  <line x1="9" y1="15" x2="15" y2="15" />
+                                </svg>
+                                {levelCounts.signLed > 0 && <span className="level-equip-tag">LED: {levelCounts.signLed}</span>}
+                                {levelCounts.signStatic > 0 && <span className="level-equip-tag">Static: {levelCounts.signStatic}</span>}
+                                {levelCounts.signDesignable > 0 && <span className="level-equip-tag">Designable: {levelCounts.signDesignable}</span>}
+                              </div>
+                            )}
+                            {levelTotalSensors > 0 && (
+                              <div className="level-equip-row">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <circle cx="12" cy="12" r="3" />
+                                  <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42m12.72-12.72l1.42-1.42" />
+                                </svg>
+                                {levelCounts.sensorNwave > 0 && <span className="level-equip-tag">NWAVE: {levelCounts.sensorNwave}</span>}
+                                {levelCounts.sensorParksol > 0 && <span className="level-equip-tag">Parksol: {levelCounts.sensorParksol}</span>}
+                                {levelCounts.sensorProco > 0 && <span className="level-equip-tag">Proco: {levelCounts.sensorProco}</span>}
+                                {levelCounts.sensorEnsight > 0 && <span className="level-equip-tag">Ensight: {levelCounts.sensorEnsight}</span>}
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         <div className="level-card-arrow">
                           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
