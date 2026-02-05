@@ -177,7 +177,7 @@
 /* Premium Level Card */
 .level-card-premium {
   position: relative;
-  height: 200px;
+  min-height: 200px;
   border-radius: 16px;
   overflow: hidden;
   cursor: pointer;
@@ -685,7 +685,7 @@
 
 .garage-card-modern {
   position: relative;
-  height: 240px;
+  min-height: 240px;
   background: var(--joy-palette-background-surface);
   border: 1px solid var(--joy-palette-neutral-200);
   border-radius: 8px;
@@ -797,6 +797,163 @@
 
 .card-devices svg {
   opacity: 0.7;
+}
+
+/* Equipment Breakdown - Garage Cards */
+.card-equipment-breakdown {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--joy-palette-neutral-100);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+[data-joy-color-scheme="dark"] .card-equipment-breakdown {
+  border-top-color: #27272a;
+}
+
+.equipment-category {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.equipment-category-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--joy-palette-neutral-600);
+}
+
+[data-joy-color-scheme="dark"] .equipment-category-header {
+  color: #a1a1aa;
+}
+
+.equipment-category-header svg {
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.equipment-category-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.equipment-category-total {
+  margin-left: auto;
+  font-weight: 600;
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.equipment-type-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-left: 17px;
+}
+
+.equipment-type-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--joy-palette-neutral-100);
+  color: var(--joy-palette-neutral-700);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+[data-joy-color-scheme="dark"] .equipment-type-tag {
+  background: #27272a;
+  color: #d4d4d8;
+}
+
+.equipment-empty {
+  font-size: 11px;
+  color: var(--joy-palette-neutral-400);
+  text-align: center;
+  padding: 4px 0;
+}
+
+.equipment-total-row {
+  display: flex;
+  justify-content: flex-end;
+  font-size: 10px;
+  color: var(--joy-palette-neutral-500);
+  opacity: 0.7;
+  padding-top: 2px;
+}
+
+/* Equipment Summary - Level Selector Header */
+.garage-equipment-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-top: 8px;
+}
+
+.equipment-summary-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.equipment-summary-icon {
+  display: flex;
+  align-items: center;
+  color: var(--joy-palette-neutral-500);
+}
+
+[data-joy-color-scheme="dark"] .equipment-summary-icon {
+  color: #71717a;
+}
+
+.equipment-summary-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--joy-palette-neutral-600);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+[data-joy-color-scheme="dark"] .equipment-summary-label {
+  color: #a1a1aa;
+}
+
+/* Equipment Breakdown - Level Cards */
+.level-equipment-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(8px);
+  border-radius: 10px;
+}
+
+.level-equip-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.level-equip-row svg {
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.level-equip-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 /* Edit Button - top right corner */
