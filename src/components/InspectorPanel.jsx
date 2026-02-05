@@ -290,6 +290,19 @@ const InspectorPanel = () => {
             />
           </div>
 
+          {/* MAC Address for Cameras and Signs */}
+          {(isCamera || isSign) && (
+            <div className="compact-row">
+              <label>MAC Address</label>
+              <input
+                type="text"
+                value={device.macAddress || ''}
+                placeholder="00:1A:2B:3C:4D:5E"
+                onChange={(e) => updateDevice(device.id, { macAddress: e.target.value })}
+              />
+            </div>
+          )}
+
           {/* Stream Tabs for Dual Lens Cameras */}
           {isCamera && isDualLens && (
             <div className="stream-tabs-inspector" style={{ display: 'flex', gap: 4, margin: '12px 0' }}>
