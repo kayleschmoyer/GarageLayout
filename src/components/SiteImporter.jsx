@@ -1,5 +1,5 @@
 import React, { useContext, useState, useCallback, useRef, useEffect } from 'react';
-import { Button, Input, Modal, ModalDialog } from '@mui/joy';
+import { Button, Modal, ModalDialog } from '@mui/joy';
 import { AppContext } from '../App';
 import {
   signInWithGoogle,
@@ -10,18 +10,6 @@ import {
 import { parseExcelFile, getImportSummary } from '../services/ExcelParserService';
 
 // ========================= CONSTANTS =========================
-
-const CLIENT_ID_KEY = 'garagelayout_google_client_id';
-
-const INPUT_SX = Object.freeze({
-  fontSize: 14,
-  color: '#fafafa',
-  bgcolor: '#27272a',
-  borderColor: '#3f3f46',
-  '&:hover': { borderColor: '#52525b' },
-  '&:focus-within': { borderColor: '#3b82f6' },
-  '&::placeholder': { color: '#71717a' },
-});
 
 const MODAL_SX = Object.freeze({
   borderRadius: '12px',
@@ -61,9 +49,6 @@ export default function SiteImporter() {
   const { setGarages, setCurrentView } = useContext(AppContext);
 
   // Auth state
-  const [clientId, setClientId] = useState(() => localStorage.getItem(CLIENT_ID_KEY) || '');
-  const [showClientIdModal, setShowClientIdModal] = useState(false);
-  const [clientIdInput, setClientIdInput] = useState('');
   const [authenticated, setAuthenticated] = useState(false);
 
   // File browser state
@@ -83,15 +68,10 @@ export default function SiteImporter() {
   // ---- Auth handlers ----
 
   const handleSignIn = useCallback(async () => {
-    if (!clientId) {
-      setClientIdInput('');
-      setShowClientIdModal(true);
-      return;
-    }
     setError('');
     setLoading(true);
     try {
-      await signInWithGoogle(clientId);
+      await signInWithGoogle();
       setAuthenticated(true);
       // Auto-load files after sign in
       const result = await listXlsxFiles();
@@ -103,7 +83,7 @@ export default function SiteImporter() {
     } finally {
       setLoading(false);
     }
-  }, [clientId]);
+  }, []);
 
   const handleSignOut = useCallback(() => {
     signOut();
@@ -115,30 +95,6 @@ export default function SiteImporter() {
     setImportResult(null);
     setError('');
   }, []);
-
-  const handleSaveClientId = useCallback(() => {
-    const trimmed = clientIdInput.trim();
-    if (!trimmed) return;
-    localStorage.setItem(CLIENT_ID_KEY, trimmed);
-    setClientId(trimmed);
-    setShowClientIdModal(false);
-    // Auto-trigger sign in after saving
-    setTimeout(async () => {
-      setError('');
-      setLoading(true);
-      try {
-        await signInWithGoogle(trimmed);
-        setAuthenticated(true);
-        const result = await listXlsxFiles();
-        setFiles(result.files);
-        setNextPageToken(result.nextPageToken);
-      } catch (err) {
-        setError(err.message || 'Sign-in failed');
-      } finally {
-        setLoading(false);
-      }
-    }, 100);
-  }, [clientIdInput]);
 
   // ---- File search ----
 
@@ -249,16 +205,6 @@ export default function SiteImporter() {
               Sign Out
             </button>
           )}
-          <button
-            onClick={() => { setClientIdInput(clientId); setShowClientIdModal(true); }}
-            style={{ background: 'none', border: '1px solid #3f3f46', color: '#a1a1aa', fontSize: 13, padding: '6px 12px', borderRadius: 6, cursor: 'pointer' }}
-            title="Configure Google OAuth Client ID"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: 'middle' }}>
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-          </button>
         </div>
       </header>
 
@@ -327,7 +273,7 @@ export default function SiteImporter() {
                   <div className="site-importer-step-num">2</div>
                   <div>
                     <strong>Select a configuration file</strong>
-                    <p>Browse and search your .xlsx files with the site configuration.</p>
+                    <p>Browse and search .xlsx files from the shared configuration folder.</p>
                   </div>
                 </div>
                 <div className="site-importer-step">
@@ -486,60 +432,6 @@ export default function SiteImporter() {
           </div>
         )}
       </div>
-
-      {/* Client ID Modal */}
-      <Modal open={showClientIdModal} onClose={() => setShowClientIdModal(false)}>
-        <ModalDialog sx={MODAL_SX}>
-          <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #27272a' }}>
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#fafafa' }}>
-              Google OAuth Configuration
-            </h3>
-            <p style={{ margin: '8px 0 0', fontSize: 13, color: '#71717a', lineHeight: 1.5 }}>
-              Enter your Google Cloud OAuth 2.0 Client ID. You can create one in the{' '}
-              <a
-                href="https://console.cloud.google.com/apis/credentials"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: '#60a5fa' }}
-              >
-                Google Cloud Console
-              </a>
-              . Enable the Google Drive API and add your domain as an authorized JavaScript origin.
-            </p>
-          </div>
-          <div style={{ padding: '16px 24px' }}>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Client ID
-            </label>
-            <Input
-              sx={INPUT_SX}
-              placeholder="xxxx.apps.googleusercontent.com"
-              value={clientIdInput}
-              onChange={(e) => setClientIdInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSaveClientId()}
-            />
-          </div>
-          <div style={{ padding: '12px 24px 20px', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <Button
-              variant="outlined"
-              color="neutral"
-              size="sm"
-              onClick={() => setShowClientIdModal(false)}
-              sx={{ borderColor: '#3f3f46', color: '#a1a1aa', '&:hover': { bgcolor: '#27272a' } }}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSaveClientId}
-              disabled={!clientIdInput.trim()}
-              sx={{ bgcolor: '#3b82f6', '&:hover': { bgcolor: '#2563eb' } }}
-            >
-              Save &amp; Connect
-            </Button>
-          </div>
-        </ModalDialog>
-      </Modal>
 
       {/* Import Confirmation Modal */}
       <Modal open={showConfirmModal} onClose={() => setShowConfirmModal(false)}>

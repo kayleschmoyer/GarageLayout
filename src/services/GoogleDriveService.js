@@ -2,14 +2,14 @@
  * GoogleDriveService - Handles Google OAuth 2.0 and Google Drive file operations
  *
  * Uses Google Identity Services (GIS) for OAuth token-based auth.
- * The user must provide their own Google Cloud Client ID via the UI.
  *
  * Scopes:
  *   - https://www.googleapis.com/auth/drive.readonly (read-only access to Drive files)
  */
 
+const CLIENT_ID = '803815610394-q9jiico10t5obbv9tdib05akm0f8vemr.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
+const SHARED_FOLDER_ID = '1OZXQcKjsZY59gnPFDThSZehJzxsvtjPU';
 
 let tokenClient = null;
 let accessToken = null;
@@ -43,16 +43,15 @@ function loadGisScript() {
  * Initialize the OAuth token client and trigger the consent flow.
  * Returns an access token upon successful login.
  *
- * @param {string} clientId - Google Cloud OAuth 2.0 Client ID
  * @returns {Promise<string>} access token
  */
-export async function signInWithGoogle(clientId) {
+export async function signInWithGoogle() {
   await loadGisScript();
 
   return new Promise((resolve, reject) => {
     try {
       tokenClient = window.google.accounts.oauth2.initTokenClient({
-        client_id: clientId,
+        client_id: CLIENT_ID,
         scope: SCOPES,
         callback: (response) => {
           if (response.error) {
@@ -92,7 +91,7 @@ export function signOut() {
 }
 
 /**
- * List xlsx files from the user's Google Drive.
+ * List xlsx files from the shared Google Drive folder.
  * Supports pagination via pageToken.
  *
  * @param {Object} options
@@ -106,8 +105,8 @@ export async function listXlsxFiles({ pageToken, pageSize = 100, searchQuery } =
     throw new Error('Not signed in. Please sign in with Google first.');
   }
 
-  // Build the query: xlsx files only, not trashed
-  let q = "mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed=false";
+  // Build the query: xlsx files in the shared folder, not trashed
+  let q = `'${SHARED_FOLDER_ID}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed=false`;
   if (searchQuery && searchQuery.trim()) {
     // Escape single quotes in search
     const escaped = searchQuery.trim().replace(/'/g, "\\'");
