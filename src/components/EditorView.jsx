@@ -224,7 +224,10 @@ const EditorView = () => {
     sensorGroup: '',
     sensorId: '',
     tempParkingTimeMinutes: '',
-    controllerKey: ''
+    controllerKey: '',
+    // Server and sign association
+    serverId: '',
+    signId: ''
   });
 
   // Memoized garage and level
@@ -239,6 +242,22 @@ const EditorView = () => {
   }, [garage, selectedLevelId]);
 
   const allLevels = useMemo(() => safeArray(garage?.levels), [garage]);
+
+  // Servers for the garage (for camera-server association)
+  const garageServers = useMemo(() => safeArray(garage?.servers), [garage]);
+
+  // All signs across all levels (for camera-sign association)
+  const allGarageSigns = useMemo(() => {
+    const signsList = [];
+    safeArray(garage?.levels).forEach(lvl => {
+      safeArray(lvl?.devices).forEach(d => {
+        if (d?.type?.startsWith('sign-')) {
+          signsList.push({ ...d, levelName: lvl.name });
+        }
+      });
+    });
+    return signsList;
+  }, [garage]);
 
   // Address
   const fullAddress = useMemo(() => {
@@ -439,7 +458,9 @@ const EditorView = () => {
       sensorGroup: '',
       sensorId: '',
       tempParkingTimeMinutes: '',
-      controllerKey: ''
+      controllerKey: '',
+      serverId: '',
+      signId: ''
     });
   }, []);
 
@@ -1459,13 +1480,33 @@ const EditorView = () => {
                               <div className="device-icon-wrapper">{getDeviceIcon(cam.type)}</div>
                               <div className="device-info-modern" style={{ flex: 1 }}>
                                 <span className="device-name-modern">{cam.name}</span>
-                                <span className="device-type-modern" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span className="device-type-modern" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                                   {(cam.ipAddress || cam.stream1?.ipAddress) && <span>{cam.ipAddress || cam.stream1?.ipAddress}:{cam.port || cam.stream1?.port || '554'}</span>}
                                   {!(cam.ipAddress || cam.stream1?.ipAddress) && cam.type}
                                   {cam.pendingPlacement && (
                                     <span style={{ color: '#f59e0b', fontSize: 10 }}>• Not placed</span>
                                   )}
                                 </span>
+                                {(cam.serverId || cam.signId) && (
+                                  <span className="device-type-modern" style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                                    {cam.serverId && (() => {
+                                      const srv = garageServers.find(s => s.id === cam.serverId);
+                                      return srv ? (
+                                        <span style={{ fontSize: 10, color: '#60a5fa', background: 'rgba(59,130,246,0.12)', padding: '1px 6px', borderRadius: 3 }}>
+                                          {srv.name}
+                                        </span>
+                                      ) : null;
+                                    })()}
+                                    {cam.signId && (() => {
+                                      const sgn = allGarageSigns.find(s => s.id === cam.signId);
+                                      return sgn ? (
+                                        <span style={{ fontSize: 10, color: '#4ade80', background: 'rgba(34,197,94,0.12)', padding: '1px 6px', borderRadius: 3 }}>
+                                          {sgn.name}
+                                        </span>
+                                      ) : null;
+                                    })()}
+                                  </span>
+                                )}
                               </div>
                               {cam.pendingPlacement && (
                                 <button
@@ -1998,6 +2039,50 @@ const EditorView = () => {
                                           style={inputStyle}
                                         />
                                       </div>
+                                    </div>
+
+                                    {/* Server and Sign Association */}
+                                    <div className="form-section" style={{ marginTop: 16 }}>
+                                      <label className="form-label-small" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                          <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                                          <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                                          <line x1="6" y1="6" x2="6.01" y2="6" />
+                                          <line x1="6" y1="18" x2="6.01" y2="18" />
+                                        </svg>
+                                        Server Assignment
+                                      </label>
+                                      <select
+                                        value={newDevice.serverId || ''}
+                                        onChange={(e) => setNewDevice({ ...newDevice, serverId: e.target.value ? Number(e.target.value) : '' })}
+                                        style={{ width: '100%', padding: '10px 12px', fontSize: 13, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.inputBg, color: theme.text }}
+                                      >
+                                        <option value="">No server assigned</option>
+                                        {garageServers.map(s => (
+                                          <option key={s.id} value={s.id}>{s.name} ({s.serverType})</option>
+                                        ))}
+                                      </select>
+                                    </div>
+
+                                    <div className="form-section" style={{ marginTop: 12 }}>
+                                      <label className="form-label-small" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                          <rect x="2" y="4" width="20" height="12" rx="2" />
+                                          <path d="M6 8h12M6 12h8" />
+                                          <path d="M12 16v4" />
+                                        </svg>
+                                        Sign Assignment
+                                      </label>
+                                      <select
+                                        value={newDevice.signId || ''}
+                                        onChange={(e) => setNewDevice({ ...newDevice, signId: e.target.value ? Number(parseFloat(e.target.value)) : '' })}
+                                        style={{ width: '100%', padding: '10px 12px', fontSize: 13, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.inputBg, color: theme.text }}
+                                      >
+                                        <option value="">No sign assigned</option>
+                                        {allGarageSigns.map(s => (
+                                          <option key={s.id} value={s.id}>{s.name} ({s.levelName})</option>
+                                        ))}
+                                      </select>
                                     </div>
                                   </>
                                 );

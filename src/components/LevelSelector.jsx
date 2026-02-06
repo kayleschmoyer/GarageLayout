@@ -40,6 +40,45 @@ const DEFAULT_NEW_LEVEL = Object.freeze({
   handicapSpots: 0
 });
 
+const DEFAULT_NEW_SERVER = Object.freeze({
+  name: '',
+  username: '',
+  password: '',
+  ipAddress: '',
+  serverType: 'Recording Server',
+  os: 'Windows Server 2022',
+  details: ''
+});
+
+const SERVER_TYPES = [
+  'Recording Server',
+  'Processing Server',
+  'Edge Server',
+  'Management Server',
+  'Storage Server'
+];
+
+const OS_OPTIONS = [
+  'Windows Server 2022',
+  'Windows Server 2019',
+  'Windows 11 Pro',
+  'Windows 10 Pro',
+  'Ubuntu 22.04 LTS',
+  'Ubuntu 20.04 LTS',
+  'CentOS 7',
+  'Debian 12',
+  'Other'
+];
+
+const generateServerId = (servers) => {
+  const safeServers = safeArray(servers);
+  if (safeServers.length === 0) return 1;
+  const ids = safeServers
+    .map(s => (s && typeof s.id === 'number' ? s.id : 0))
+    .filter(id => id > 0);
+  return ids.length > 0 ? Math.max(...ids) + 1 : 1;
+};
+
 const LEVEL_GRADIENTS_DARK = Object.freeze([
   'linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%)',
   'linear-gradient(135deg, #1a365d 0%, #1e1e2e 100%)',
@@ -141,6 +180,15 @@ const LevelSelector = () => {
   const [newLevel, setNewLevel] = useState({ ...DEFAULT_NEW_LEVEL });
   const [isProcessing, setIsProcessing] = useState(false);
   const [localTime, setLocalTime] = useState('');
+
+  // Server management state
+  const [showServerModal, setShowServerModal] = useState(false);
+  const [showServerDetailModal, setShowServerDetailModal] = useState(false);
+  const [showEditServerModal, setShowEditServerModal] = useState(false);
+  const [newServer, setNewServer] = useState({ ...DEFAULT_NEW_SERVER });
+  const [viewingServer, setViewingServer] = useState(null);
+  const [editingServer, setEditingServer] = useState(null);
+  const [showServerPasswords, setShowServerPasswords] = useState({});
 
   const garage = useMemo(() => {
     if (selectedGarageId == null) return null;
@@ -368,6 +416,200 @@ const LevelSelector = () => {
     setEditingLevel(prev => (prev ? { ...prev, [field]: value } : prev));
   }, []);
 
+  // ========================= SERVER HANDLERS =========================
+
+  const garageServers = useMemo(() => safeArray(garage?.servers), [garage]);
+
+  const handleCloseServerModal = useCallback(() => {
+    if (!mountedRef.current) return;
+    setShowServerModal(false);
+    setNewServer({ ...DEFAULT_NEW_SERVER });
+    setIsProcessing(false);
+  }, []);
+
+  const handleCloseServerDetailModal = useCallback(() => {
+    if (!mountedRef.current) return;
+    setShowServerDetailModal(false);
+    setViewingServer(null);
+  }, []);
+
+  const handleCloseEditServerModal = useCallback(() => {
+    if (!mountedRef.current) return;
+    setShowEditServerModal(false);
+    setEditingServer(null);
+    setIsProcessing(false);
+  }, []);
+
+  const addServer = useCallback(() => {
+    if (isProcessing) return;
+    const trimmedName = sanitizeString(newServer.name);
+    if (!trimmedName) return;
+
+    setIsProcessing(true);
+
+    try {
+      const updatedGarages = garages.map(g => {
+        if (!g || g.id !== selectedGarageId) return g;
+        const newId = generateServerId(g.servers);
+        return {
+          ...g,
+          servers: [
+            ...safeArray(g.servers),
+            {
+              id: newId,
+              name: trimmedName,
+              username: safeString(newServer.username).trim(),
+              password: safeString(newServer.password),
+              ipAddress: safeString(newServer.ipAddress).trim(),
+              serverType: safeString(newServer.serverType) || 'Recording Server',
+              os: safeString(newServer.os) || 'Windows Server 2022',
+              details: safeString(newServer.details).trim()
+            }
+          ]
+        };
+      });
+
+      setGarages(updatedGarages);
+
+      if (mountedRef.current) {
+        handleCloseServerModal();
+      }
+    } catch {
+      if (mountedRef.current) {
+        setIsProcessing(false);
+      }
+    }
+  }, [isProcessing, newServer, garages, selectedGarageId, setGarages, handleCloseServerModal]);
+
+  const updateServer = useCallback(() => {
+    if (isProcessing) return;
+    if (!editingServer || editingServer.id == null) return;
+    const trimmedName = sanitizeString(editingServer.name);
+    if (!trimmedName) return;
+
+    setIsProcessing(true);
+
+    try {
+      const updatedGarages = garages.map(g => {
+        if (!g || g.id !== selectedGarageId) return g;
+        return {
+          ...g,
+          servers: safeArray(g.servers).map(s => {
+            if (!s || s.id !== editingServer.id) return s;
+            return {
+              ...s,
+              name: trimmedName,
+              username: safeString(editingServer.username).trim(),
+              password: safeString(editingServer.password),
+              ipAddress: safeString(editingServer.ipAddress).trim(),
+              serverType: safeString(editingServer.serverType) || 'Recording Server',
+              os: safeString(editingServer.os) || 'Windows Server 2022',
+              details: safeString(editingServer.details).trim()
+            };
+          })
+        };
+      });
+
+      setGarages(updatedGarages);
+
+      if (mountedRef.current) {
+        handleCloseEditServerModal();
+      }
+    } catch {
+      if (mountedRef.current) {
+        setIsProcessing(false);
+      }
+    }
+  }, [isProcessing, editingServer, garages, selectedGarageId, setGarages, handleCloseEditServerModal]);
+
+  const deleteServer = useCallback((e, serverId) => {
+    if (e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation();
+    }
+    if (isProcessing) return;
+    if (serverId == null) return;
+
+    setIsProcessing(true);
+
+    try {
+      const updatedGarages = garages.map(g => {
+        if (!g || g.id !== selectedGarageId) return g;
+        return {
+          ...g,
+          servers: safeArray(g.servers).filter(s => s && s.id !== serverId)
+        };
+      });
+
+      setGarages(updatedGarages);
+
+      if (mountedRef.current) {
+        handleCloseEditServerModal();
+        handleCloseServerDetailModal();
+      }
+    } catch {
+      if (mountedRef.current) {
+        setIsProcessing(false);
+      }
+    }
+  }, [isProcessing, garages, selectedGarageId, setGarages, handleCloseEditServerModal, handleCloseServerDetailModal]);
+
+  const handleNewServerChange = useCallback((field) => (e) => {
+    if (!mountedRef.current) return;
+    const value = e?.target?.value ?? '';
+    setNewServer(prev => ({ ...prev, [field]: value }));
+  }, []);
+
+  const handleEditServerChange = useCallback((field) => (e) => {
+    if (!mountedRef.current) return;
+    const value = e?.target?.value ?? '';
+    setEditingServer(prev => (prev ? { ...prev, [field]: value } : prev));
+  }, []);
+
+  const handleViewServer = useCallback((server) => {
+    if (!server || server.id == null) return;
+    setViewingServer(server);
+    setShowServerDetailModal(true);
+  }, []);
+
+  const handleOpenEditServer = useCallback((server) => {
+    if (!server || server.id == null) return;
+    setEditingServer({
+      id: server.id,
+      name: safeString(server.name),
+      username: safeString(server.username),
+      password: safeString(server.password),
+      ipAddress: safeString(server.ipAddress),
+      serverType: safeString(server.serverType),
+      os: safeString(server.os),
+      details: safeString(server.details)
+    });
+    setShowServerDetailModal(false);
+    setShowEditServerModal(true);
+  }, []);
+
+  const handleOpenAddServerModal = useCallback(() => {
+    setNewServer({ ...DEFAULT_NEW_SERVER });
+    setShowServerModal(true);
+  }, []);
+
+  const toggleServerPassword = useCallback((serverId) => {
+    setShowServerPasswords(prev => ({ ...prev, [serverId]: !prev[serverId] }));
+  }, []);
+
+  // Count devices per server
+  const serverDeviceCounts = useMemo(() => {
+    const counts = {};
+    if (!garage) return counts;
+    safeArray(garage.levels).forEach(lvl => {
+      safeArray(lvl?.devices).forEach(d => {
+        if (d?.serverId) {
+          counts[d.serverId] = (counts[d.serverId] || 0) + 1;
+        }
+      });
+    });
+    return counts;
+  }, [garage]);
+
   const handleOpenEditLevel = useCallback((e, level) => {
     if (e && typeof e.stopPropagation === 'function') {
       e.stopPropagation();
@@ -570,6 +812,128 @@ const LevelSelector = () => {
             </div>
 
             <div className="content-area">
+              {/* ========================= SERVERS SECTION ========================= */}
+              <div className="section-tools" style={{ marginBottom: 0 }}>
+                <div className="section-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                    <line x1="6" y1="6" x2="6.01" y2="6" />
+                    <line x1="6" y1="18" x2="6.01" y2="18" />
+                  </svg>
+                  Servers ({garageServers.length})
+                </div>
+              </div>
+
+              <div className="levels-grid" style={{ marginBottom: 24 }}>
+                {garageServers.map((server) => {
+                  if (!server || server.id == null) return null;
+                  const deviceCount = serverDeviceCounts[server.id] || 0;
+                  return (
+                    <div
+                      key={server.id}
+                      className="level-card-premium"
+                      onClick={() => handleViewServer(server)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleViewServer(server);
+                        }
+                      }}
+                    >
+                      <div
+                        className="level-card-bg"
+                        style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}
+                      />
+                      <div className="level-card-glass" />
+                      <div className="level-card-content">
+                        <div className="level-card-actions">
+                          <button
+                            className="level-action-btn"
+                            onClick={(e) => { e.stopPropagation(); handleOpenEditServer(server); }}
+                            title="Edit Server"
+                            type="button"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                          </button>
+                        </div>
+
+                        <div className="level-card-center">
+                          <div className="level-icon">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                              <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                              <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                              <line x1="6" y1="6" x2="6.01" y2="6" />
+                              <line x1="6" y1="18" x2="6.01" y2="18" />
+                            </svg>
+                          </div>
+                          <h3 className="level-name">{safeString(server.name) || 'Unnamed Server'}</h3>
+                        </div>
+
+                        <div className="level-card-stats">
+                          <div className="level-stat">
+                            <span className="level-stat-value" style={{ fontSize: 11 }}>{safeString(server.serverType) || 'N/A'}</span>
+                            <span className="level-stat-label">Type</span>
+                          </div>
+                          <div className="level-stat-divider" />
+                          <div className="level-stat">
+                            <span className="level-stat-value" style={{ fontSize: 11 }}>{safeString(server.os).split(' ').slice(0, 2).join(' ') || 'N/A'}</span>
+                            <span className="level-stat-label">OS</span>
+                          </div>
+                          <div className="level-stat-divider" />
+                          <div className="level-stat">
+                            <span className="level-stat-value">{deviceCount}</span>
+                            <span className="level-stat-label">Devices</span>
+                          </div>
+                        </div>
+
+                        {server.ipAddress && (
+                          <div className="level-equipment-breakdown">
+                            <div className="level-equip-row">
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
+                              </svg>
+                              <span className="level-equip-tag">{server.ipAddress}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="level-card-arrow">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M5 12h14M12 5l7 7-7 7" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div
+                  className="level-card-add"
+                  onClick={handleOpenAddServerModal}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleOpenAddServerModal();
+                    }
+                  }}
+                >
+                  <div className="add-level-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                  </div>
+                  <span>Add Server</span>
+                </div>
+              </div>
+
               <div className="section-tools">
                 <div className="section-label">All Levels</div>
               </div>
@@ -908,6 +1272,415 @@ const LevelSelector = () => {
                 size="sm"
                 onClick={updateLevel}
                 disabled={!isEditLevelValid || isProcessing}
+                loading={isProcessing}
+              >
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        </ModalDialog>
+      </Modal>
+
+      {/* ========================= ADD SERVER MODAL ========================= */}
+      <Modal open={showServerModal} onClose={handleCloseServerModal}>
+        <ModalDialog sx={{ ...MODAL_SX, maxWidth: 520 }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #3f3f46', background: '#27272a' }}>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#fafafa', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                <line x1="6" y1="6" x2="6.01" y2="6" />
+                <line x1="6" y1="18" x2="6.01" y2="18" />
+              </svg>
+              Add New Server
+            </h3>
+          </div>
+
+          <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label style={LABEL_STYLE}>Server Name</label>
+              <Input
+                size="sm"
+                placeholder="e.g., NVR-01, Edge Server A"
+                value={newServer.name}
+                onChange={handleNewServerChange('name')}
+                autoFocus
+                sx={INPUT_SX}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={LABEL_STYLE}>Server Type</label>
+                <select
+                  value={newServer.serverType}
+                  onChange={handleNewServerChange('serverType')}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    fontSize: 14,
+                    borderRadius: 6,
+                    border: '1px solid #3f3f46',
+                    background: '#27272a',
+                    color: '#fafafa',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {SERVER_TYPES.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={LABEL_STYLE}>Operating System</label>
+                <select
+                  value={newServer.os}
+                  onChange={handleNewServerChange('os')}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    fontSize: 14,
+                    borderRadius: 6,
+                    border: '1px solid #3f3f46',
+                    background: '#27272a',
+                    color: '#fafafa',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {OS_OPTIONS.map(o => (
+                    <option key={o} value={o}>{o}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label style={LABEL_STYLE}>IP Address</label>
+              <Input
+                size="sm"
+                placeholder="e.g., 10.16.1.100"
+                value={newServer.ipAddress}
+                onChange={handleNewServerChange('ipAddress')}
+                sx={INPUT_SX}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={LABEL_STYLE}>Username</label>
+                <Input
+                  size="sm"
+                  placeholder="admin"
+                  value={newServer.username}
+                  onChange={handleNewServerChange('username')}
+                  sx={INPUT_SX}
+                />
+              </div>
+              <div>
+                <label style={LABEL_STYLE}>Password</label>
+                <Input
+                  size="sm"
+                  type="password"
+                  placeholder="********"
+                  value={newServer.password}
+                  onChange={handleNewServerChange('password')}
+                  sx={INPUT_SX}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={LABEL_STYLE}>Details / Notes</label>
+              <Input
+                size="sm"
+                placeholder="Any additional details about this server..."
+                value={newServer.details}
+                onChange={handleNewServerChange('details')}
+                sx={INPUT_SX}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', padding: '14px 20px', borderTop: '1px solid #3f3f46', background: '#27272a' }}>
+            <Button
+              size="sm"
+              variant="outlined"
+              color="neutral"
+              onClick={handleCloseServerModal}
+              disabled={isProcessing}
+              sx={{ color: '#fafafa', borderColor: '#3f3f46', '&:hover': { bgcolor: '#3f3f46' } }}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={addServer}
+              disabled={!sanitizeString(newServer.name).length || isProcessing}
+              loading={isProcessing}
+            >
+              Add Server
+            </Button>
+          </div>
+        </ModalDialog>
+      </Modal>
+
+      {/* ========================= VIEW SERVER DETAIL MODAL ========================= */}
+      <Modal open={showServerDetailModal} onClose={handleCloseServerDetailModal}>
+        <ModalDialog sx={{ ...MODAL_SX, maxWidth: 520 }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #3f3f46', background: '#27272a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#fafafa', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                <line x1="6" y1="6" x2="6.01" y2="6" />
+                <line x1="6" y1="18" x2="6.01" y2="18" />
+              </svg>
+              {safeString(viewingServer?.name) || 'Server Details'}
+            </h3>
+            <button
+              onClick={() => viewingServer && handleOpenEditServer(viewingServer)}
+              style={{
+                padding: '6px 12px',
+                background: 'transparent',
+                border: '1px solid #3f3f46',
+                borderRadius: 6,
+                color: '#3b82f6',
+                fontSize: 12,
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+              Edit
+            </button>
+          </div>
+
+          {viewingServer && (
+            <div style={{ padding: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                <div style={{ padding: '12px 16px', background: '#27272a', borderRadius: 8, border: '1px solid #3f3f46' }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Server Type</div>
+                  <div style={{ fontSize: 14, fontWeight: 500, color: '#fafafa' }}>{safeString(viewingServer.serverType) || 'N/A'}</div>
+                </div>
+                <div style={{ padding: '12px 16px', background: '#27272a', borderRadius: 8, border: '1px solid #3f3f46' }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Operating System</div>
+                  <div style={{ fontSize: 14, fontWeight: 500, color: '#fafafa' }}>{safeString(viewingServer.os) || 'N/A'}</div>
+                </div>
+              </div>
+
+              <div style={{ padding: '12px 16px', background: '#27272a', borderRadius: 8, border: '1px solid #3f3f46', marginBottom: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>IP Address</div>
+                <div style={{ fontSize: 14, fontWeight: 500, color: '#fafafa', fontFamily: 'monospace' }}>{safeString(viewingServer.ipAddress) || 'N/A'}</div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                <div style={{ padding: '12px 16px', background: '#27272a', borderRadius: 8, border: '1px solid #3f3f46' }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Username</div>
+                  <div style={{ fontSize: 14, fontWeight: 500, color: '#fafafa', fontFamily: 'monospace' }}>{safeString(viewingServer.username) || 'N/A'}</div>
+                </div>
+                <div style={{ padding: '12px 16px', background: '#27272a', borderRadius: 8, border: '1px solid #3f3f46' }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Password</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: '#fafafa', fontFamily: 'monospace', flex: 1 }}>
+                      {showServerPasswords[viewingServer.id] ? (safeString(viewingServer.password) || 'N/A') : '••••••••'}
+                    </div>
+                    <button
+                      onClick={() => toggleServerPassword(viewingServer.id)}
+                      style={{
+                        padding: '2px 6px',
+                        background: 'transparent',
+                        border: '1px solid #3f3f46',
+                        borderRadius: 4,
+                        color: '#a1a1aa',
+                        fontSize: 10,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {showServerPasswords[viewingServer.id] ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {safeString(viewingServer.details) && (
+                <div style={{ padding: '12px 16px', background: '#27272a', borderRadius: 8, border: '1px solid #3f3f46', marginBottom: 12 }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Details</div>
+                  <div style={{ fontSize: 13, color: '#d4d4d8', lineHeight: 1.5 }}>{viewingServer.details}</div>
+                </div>
+              )}
+
+              <div style={{ padding: '12px 16px', background: '#27272a', borderRadius: 8, border: '1px solid #3f3f46' }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Assigned Devices</div>
+                <div style={{ fontSize: 14, fontWeight: 500, color: '#fafafa' }}>{serverDeviceCounts[viewingServer.id] || 0} device(s)</div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', padding: '14px 20px', borderTop: '1px solid #3f3f46', background: '#27272a' }}>
+            <Button
+              size="sm"
+              variant="outlined"
+              color="neutral"
+              onClick={handleCloseServerDetailModal}
+              sx={{ color: '#fafafa', borderColor: '#3f3f46', '&:hover': { bgcolor: '#3f3f46' } }}
+            >
+              Close
+            </Button>
+          </div>
+        </ModalDialog>
+      </Modal>
+
+      {/* ========================= EDIT SERVER MODAL ========================= */}
+      <Modal open={showEditServerModal} onClose={handleCloseEditServerModal}>
+        <ModalDialog sx={{ ...MODAL_SX, maxWidth: 520 }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #3f3f46', background: '#27272a' }}>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#fafafa', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                <line x1="6" y1="6" x2="6.01" y2="6" />
+                <line x1="6" y1="18" x2="6.01" y2="18" />
+              </svg>
+              Edit Server
+            </h3>
+          </div>
+
+          <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label style={LABEL_STYLE}>Server Name</label>
+              <Input
+                size="sm"
+                placeholder="e.g., NVR-01, Edge Server A"
+                value={editingServer?.name || ''}
+                onChange={handleEditServerChange('name')}
+                autoFocus
+                sx={INPUT_SX}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={LABEL_STYLE}>Server Type</label>
+                <select
+                  value={editingServer?.serverType || ''}
+                  onChange={handleEditServerChange('serverType')}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    fontSize: 14,
+                    borderRadius: 6,
+                    border: '1px solid #3f3f46',
+                    background: '#27272a',
+                    color: '#fafafa',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {SERVER_TYPES.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={LABEL_STYLE}>Operating System</label>
+                <select
+                  value={editingServer?.os || ''}
+                  onChange={handleEditServerChange('os')}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    fontSize: 14,
+                    borderRadius: 6,
+                    border: '1px solid #3f3f46',
+                    background: '#27272a',
+                    color: '#fafafa',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {OS_OPTIONS.map(o => (
+                    <option key={o} value={o}>{o}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label style={LABEL_STYLE}>IP Address</label>
+              <Input
+                size="sm"
+                placeholder="e.g., 10.16.1.100"
+                value={editingServer?.ipAddress || ''}
+                onChange={handleEditServerChange('ipAddress')}
+                sx={INPUT_SX}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={LABEL_STYLE}>Username</label>
+                <Input
+                  size="sm"
+                  placeholder="admin"
+                  value={editingServer?.username || ''}
+                  onChange={handleEditServerChange('username')}
+                  sx={INPUT_SX}
+                />
+              </div>
+              <div>
+                <label style={LABEL_STYLE}>Password</label>
+                <Input
+                  size="sm"
+                  type="password"
+                  placeholder="********"
+                  value={editingServer?.password || ''}
+                  onChange={handleEditServerChange('password')}
+                  sx={INPUT_SX}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={LABEL_STYLE}>Details / Notes</label>
+              <Input
+                size="sm"
+                placeholder="Any additional details about this server..."
+                value={editingServer?.details || ''}
+                onChange={handleEditServerChange('details')}
+                sx={INPUT_SX}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between', padding: '14px 20px', borderTop: '1px solid #3f3f46', background: '#27272a' }}>
+            <Button
+              size="sm"
+              variant="soft"
+              color="danger"
+              onClick={(e) => editingServer && deleteServer(e, editingServer.id)}
+              disabled={isProcessing}
+            >
+              Delete Server
+            </Button>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <Button
+                size="sm"
+                variant="outlined"
+                color="neutral"
+                onClick={handleCloseEditServerModal}
+                disabled={isProcessing}
+                sx={{ color: '#fafafa', borderColor: '#3f3f46', '&:hover': { bgcolor: '#3f3f46' } }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={updateServer}
+                disabled={!(editingServer && sanitizeString(editingServer.name).length > 0) || isProcessing}
                 loading={isProcessing}
               >
                 Save Changes
