@@ -131,6 +131,7 @@ function AppContent() {
         { id: 2, name: 'John Doe', title: 'Maintenance Lead', phone: '(555) 555-5555', email: '', type: 'phone' },
         { id: 3, name: 'IT Support', title: 'Help Desk', phone: '', email: 'support@garage.com', type: 'email' }
       ],
+      servers: [],
       levels: [
         { id: 1, name: 'Level 1', totalSpots: 150, evSpots: 10, handicapSpots: 8, bgImage: null, devices: [] },
         { id: 2, name: 'Level 2', totalSpots: 150, evSpots: 8, handicapSpots: 6, bgImage: null, devices: [] },
