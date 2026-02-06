@@ -83,6 +83,39 @@ const generateLevelId = (levels) => {
   return ids.length > 0 ? Math.max(...ids) + 1 : 1;
 };
 
+// Map US state abbreviations to IANA timezone identifiers
+const STATE_TO_TIMEZONE = {
+  // Eastern Time
+  'CT': 'America/New_York', 'DE': 'America/New_York', 'FL': 'America/New_York',
+  'GA': 'America/New_York', 'ME': 'America/New_York', 'MD': 'America/New_York',
+  'MA': 'America/New_York', 'NH': 'America/New_York', 'NJ': 'America/New_York',
+  'NY': 'America/New_York', 'NC': 'America/New_York', 'OH': 'America/New_York',
+  'PA': 'America/New_York', 'RI': 'America/New_York', 'SC': 'America/New_York',
+  'VT': 'America/New_York', 'VA': 'America/New_York', 'WV': 'America/New_York',
+  // Central Time
+  'AL': 'America/Chicago', 'AR': 'America/Chicago', 'IL': 'America/Chicago',
+  'IA': 'America/Chicago', 'KS': 'America/Chicago', 'KY': 'America/Chicago',
+  'LA': 'America/Chicago', 'MN': 'America/Chicago', 'MS': 'America/Chicago',
+  'MO': 'America/Chicago', 'NE': 'America/Chicago', 'ND': 'America/Chicago',
+  'OK': 'America/Chicago', 'SD': 'America/Chicago', 'TN': 'America/Chicago',
+  'TX': 'America/Chicago', 'WI': 'America/Chicago',
+  // Mountain Time
+  'AZ': 'America/Phoenix', 'CO': 'America/Denver', 'ID': 'America/Denver',
+  'MT': 'America/Denver', 'NM': 'America/Denver', 'UT': 'America/Denver',
+  'WY': 'America/Denver',
+  // Pacific Time
+  'CA': 'America/Los_Angeles', 'NV': 'America/Los_Angeles', 'OR': 'America/Los_Angeles',
+  'WA': 'America/Los_Angeles',
+  // Alaska Time
+  'AK': 'America/Anchorage',
+  // Hawaii-Aleutian Time
+  'HI': 'America/Adak'
+};
+
+const getTimezoneForState = (state) => {
+  return STATE_TO_TIMEZONE[state?.toUpperCase()] || 'America/New_York';
+};
+
 const LevelSelector = () => {
   const context = useContext(AppContext);
   const mountedRef = useRef(true);
@@ -107,6 +140,7 @@ const LevelSelector = () => {
   const [editingLevel, setEditingLevel] = useState(null);
   const [newLevel, setNewLevel] = useState({ ...DEFAULT_NEW_LEVEL });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [localTime, setLocalTime] = useState('');
 
   const garage = useMemo(() => {
     if (selectedGarageId == null) return null;
@@ -153,6 +187,37 @@ const LevelSelector = () => {
     }
     return { levels: levels.length, spots, devices, ...counts };
   }, [garage]);
+
+  // Update local time based on garage location's timezone
+  React.useEffect(() => {
+    if (!garage?.state) {
+      setLocalTime('');
+      return;
+    }
+
+    const updateTime = () => {
+      const timezone = getTimezoneForState(garage.state);
+      const now = new Date();
+      const timeString = now.toLocaleTimeString('en-US', {
+        timeZone: timezone,
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+      const dateString = now.toLocaleDateString('en-US', {
+        timeZone: timezone,
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+      setLocalTime(`${timeString} - ${dateString}`);
+    };
+
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, [garage?.state]);
 
   const toggleMode = useCallback(() => {
     if (!mountedRef.current) return;
@@ -364,6 +429,24 @@ const LevelSelector = () => {
         </div>
 
         <div className="header-right-controls">
+          {localTime && garage?.state && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              marginRight: '16px',
+              fontSize: '13px',
+              fontWeight: 500,
+              color: mode === 'dark' ? '#a1a1aa' : '#52525b'
+            }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: mode === 'dark' ? '#fafafa' : '#18181b' }}>
+                {localTime.split(' - ')[0]}
+              </div>
+              <div style={{ fontSize: '11px', marginTop: '2px' }}>
+                {localTime.split(' - ')[1]} ({garage.state})
+              </div>
+            </div>
+          )}
           <button
             className="icon-btn"
             onClick={toggleMode}
