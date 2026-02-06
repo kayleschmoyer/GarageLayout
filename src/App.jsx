@@ -2,6 +2,7 @@
 import React, { useState, createContext, useEffect, useCallback, useRef } from 'react';
 import { CssVarsProvider, useColorScheme, extendTheme } from '@mui/joy/styles';
 import CssBaseline from '@mui/joy/CssBaseline';
+import SiteImporter from './components/SiteImporter';
 import GarageSelector from './components/GarageSelector';
 import LevelSelector from './components/LevelSelector';
 import EditorView from './components/EditorView';
@@ -140,7 +141,7 @@ function AppContent() {
   ]);
 
   // Navigation state
-  const [currentView, setCurrentView] = useState('garages'); // 'garages', 'levels', 'editor'
+  const [currentView, setCurrentView] = useState('siteImporter'); // 'siteImporter', 'garages', 'levels', 'editor'
   const [selectedGarage, setSelectedGarage] = useState(null);
   const [selectedLevel, setSelectedLevel] = useState(null);
   const [selectedDevice, setSelectedDevice] = useState(null);
@@ -280,6 +281,9 @@ function AppContent() {
       setSelectedGarage(null);
       setCurrentView('garages');
       window.history.pushState({}, '', '/');
+    } else if (currentView === 'garages') {
+      setCurrentView('siteImporter');
+      window.history.pushState({}, '', '/');
     }
   };
 
@@ -300,6 +304,7 @@ function AppContent() {
       mode, setMode
     }}>
       <div className="app-container">
+        {currentView === 'siteImporter' && <SiteImporter />}
         {currentView === 'garages' && <GarageSelector />}
         {currentView === 'levels' && <LevelSelector />}
         {currentView === 'editor' && <EditorView />}
