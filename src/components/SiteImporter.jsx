@@ -6,6 +6,7 @@ import {
   signOut,
   listXlsxFiles,
   downloadFile,
+  CLIENT_ID,
 } from '../services/GoogleDriveService';
 import { parseExcelFile, getImportSummary } from '../services/ExcelParserService';
 
@@ -257,16 +258,42 @@ export default function SiteImporter() {
 
             {error && (
               <div className="site-importer-error">
-                {error}
-                {(error.includes('redirect_uri_mismatch') || error.includes('invalid request')) && (
-                  <div style={{ marginTop: 8, fontSize: 12, color: '#fbbf24', lineHeight: 1.5 }}>
-                    <strong>How to fix:</strong> In the{' '}
-                    <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>
-                      Google Cloud Console
-                    </a>
-                    , add <code style={{ background: '#27272a', padding: '1px 4px', borderRadius: 3 }}>{window.location.origin}</code> to
-                    both <em>Authorized JavaScript Origins</em> and <em>Authorized Redirect URIs</em> for the OAuth 2.0 Client ID.
-                  </div>
+                {error.includes('redirect_uri_mismatch') ? (
+                  <>
+                    <strong>OAuth origin not registered</strong>
+                    <div style={{ marginTop: 8, fontSize: 13, color: '#fbbf24', lineHeight: 1.6 }}>
+                      <p style={{ margin: '0 0 8px' }}>
+                        The origin <code style={{ background: '#27272a', padding: '2px 6px', borderRadius: 3, color: '#f0f0f0' }}>{window.location.origin}</code> is
+                        not authorized for this OAuth client.
+                      </p>
+                      <p style={{ margin: '0 0 4px' }}><strong>To fix this:</strong></p>
+                      <ol style={{ margin: '0', paddingLeft: 20 }}>
+                        <li>
+                          Open the{' '}
+                          <a href={`https://console.cloud.google.com/apis/credentials/oauthclient/${CLIENT_ID}`} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>
+                            Google Cloud Console &rarr; OAuth Client
+                          </a>
+                        </li>
+                        <li>
+                          Under <em>Authorized JavaScript Origins</em>, add: <code style={{ background: '#27272a', padding: '2px 6px', borderRadius: 3, color: '#f0f0f0' }}>{window.location.origin}</code>
+                        </li>
+                        <li>Save and wait a few minutes for changes to propagate</li>
+                      </ol>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {error}
+                    {error.includes('invalid_request') && (
+                      <div style={{ marginTop: 8, fontSize: 12, color: '#fbbf24', lineHeight: 1.5 }}>
+                        <strong>Hint:</strong> This may be a configuration issue. Verify your OAuth Client ID
+                        and Authorized JavaScript Origins in the{' '}
+                        <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>
+                          Google Cloud Console
+                        </a>.
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}

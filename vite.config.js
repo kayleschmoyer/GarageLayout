@@ -13,6 +13,10 @@ export default defineConfig({
     },
   },
   server: {
+    // Pin to port 5173 so the OAuth Authorized JavaScript Origin stays consistent.
+    // If this port is changed, update the origin in Google Cloud Console too.
+    port: 5173,
+    strictPort: true,
     // Handle client-side routing - serve index.html for all routes
     historyApiFallback: true,
   },
