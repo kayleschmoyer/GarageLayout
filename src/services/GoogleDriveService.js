@@ -7,9 +7,9 @@
  *   - https://www.googleapis.com/auth/drive.readonly (read-only access to Drive files)
  */
 
-const CLIENT_ID = '803815610394-q9jiico10t5obbv9tdib05akm0f8vemr.apps.googleusercontent.com';
+const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '803815610394-q9jiico10t5obbv9tdib05akm0f8vemr.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
-const SHARED_FOLDER_ID = '1OZXQcKjsZY59gnPFDThSZehJzxsvtjPU';
+const SHARED_FOLDER_ID = import.meta.env.VITE_GOOGLE_SHARED_FOLDER_ID || '1OZXQcKjsZY59gnPFDThSZehJzxsvtjPU';
 
 let tokenClient = null;
 let accessToken = null;
@@ -50,9 +50,11 @@ export async function signInWithGoogle() {
 
   return new Promise((resolve, reject) => {
     try {
+      const origin = window.location.origin;
       tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
+        ux_mode: 'popup',
         callback: (response) => {
           if (response.error) {
             reject(new Error(response.error_description || response.error));
@@ -62,10 +64,22 @@ export async function signInWithGoogle() {
           resolve(accessToken);
         },
         error_callback: (err) => {
-          reject(new Error(err.message || 'OAuth error'));
+          if (err.type === 'popup_closed') {
+            reject(new Error('Sign-in popup was closed before completing authentication.'));
+          } else if (err.type === 'popup_failed_to_open') {
+            reject(new Error(
+              'Could not open sign-in popup. Please allow popups for this site and try again.'
+            ));
+          } else {
+            reject(new Error(
+              `OAuth error: ${err.message || err.type || 'unknown'}. ` +
+              `If you see "redirect_uri_mismatch", the app origin (${origin}) must be added ` +
+              `to Authorized JavaScript Origins in the Google Cloud Console for OAuth client ${CLIENT_ID}.`
+            ));
+          }
         },
       });
-      tokenClient.requestAccessToken({ prompt: 'consent' });
+      tokenClient.requestAccessToken({ prompt: '' });
     } catch (err) {
       reject(err);
     }
