@@ -256,7 +256,19 @@ export default function SiteImporter() {
             </div>
 
             {error && (
-              <div className="site-importer-error">{error}</div>
+              <div className="site-importer-error">
+                {error}
+                {(error.includes('redirect_uri_mismatch') || error.includes('invalid request')) && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#fbbf24', lineHeight: 1.5 }}>
+                    <strong>How to fix:</strong> In the{' '}
+                    <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>
+                      Google Cloud Console
+                    </a>
+                    , add <code style={{ background: '#27272a', padding: '1px 4px', borderRadius: 3 }}>{window.location.origin}</code> to
+                    both <em>Authorized JavaScript Origins</em> and <em>Authorized Redirect URIs</em> for the OAuth 2.0 Client ID.
+                  </div>
+                )}
+              </div>
             )}
 
             <div className="site-importer-info">
