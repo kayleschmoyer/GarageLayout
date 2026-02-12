@@ -10,18 +10,50 @@
 
 import * as XLSX from 'xlsx';
 
+// ========================= SECURITY CONSTANTS =========================
+
+/** Maximum rows allowed per sheet to prevent memory exhaustion */
+const MAX_ROWS_PER_SHEET = 10000;
+
+/** Maximum total devices across all levels */
+const MAX_TOTAL_DEVICES = 50000;
+
 // ========================= HELPERS =========================
 
 /**
+ * Sanitize a string to prevent XSS when rendered in the DOM.
+ * Escapes HTML special characters.
+ */
+function sanitizeForDisplay(value) {
+  if (value == null) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
+/**
  * Read a sheet into an array of objects using the first row as headers.
+ * Enforces row limits for security.
  */
 function sheetToObjects(workbook, sheetName) {
   const sheet = workbook.Sheets[sheetName];
   if (!sheet) return [];
-  return XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  
+  // Security: Enforce row limit
+  if (rows.length > MAX_ROWS_PER_SHEET) {
+    throw new Error(`Sheet "${sheetName}" exceeds maximum allowed rows (${MAX_ROWS_PER_SHEET}).`);
+  }
+  
+  return rows;
 }
 
 const str = (val) => (val == null ? '' : String(val).trim());
+/** Sanitized string for values that will be displayed in UI */
+const safeStr = (val) => sanitizeForDisplay(str(val));
 const num = (val, fallback = 0) => {
   if (val == null || val === '') return fallback;
   const n = Number(val);
@@ -47,12 +79,35 @@ function genId() {
  * @returns {{ garages: Array, rawData: Object, sheetNames: string[] }}
  */
 export function parseExcelFile(buffer) {
+  // Security: Validate input buffer
+  if (!buffer) {
+    throw new Error('No file data provided.');
+  }
+  
+  if (!(buffer instanceof ArrayBuffer) && !ArrayBuffer.isView(buffer)) {
+    throw new Error('Invalid file data format.');
+  }
+  
+  if (buffer.byteLength === 0) {
+    throw new Error('File is empty.');
+  }
+
   nextId = 1;
 
-  const workbook = XLSX.read(buffer, { type: 'array' });
+  let workbook;
+  try {
+    workbook = XLSX.read(buffer, { type: 'array' });
+  } catch (err) {
+    throw new Error(`Failed to parse Excel file: ${err.message || 'Unknown error'}`);
+  }
+  
   const sheetNames = workbook.SheetNames;
+  
+  if (!sheetNames || sheetNames.length === 0) {
+    throw new Error('Excel file contains no sheets.');
+  }
 
-  // Parse each tab
+  // Parse each tab (sheetToObjects enforces row limits)
   const garagesData = sheetToObjects(workbook, 'Garages');
   const garageLevelsData = sheetToObjects(workbook, 'GarageLevels');
   const displayGroupsData = sheetToObjects(workbook, 'DisplayGroups');
@@ -64,10 +119,13 @@ export function parseExcelFile(buffer) {
   const sensorGroupsData = sheetToObjects(workbook, 'SensorGroups');
   const sensorsData = sheetToObjects(workbook, 'Sensors');
 
+  // Security: Track total devices to enforce limits
+  let totalDeviceCount = 0;
+  
   // Build garage map
   const garages = garagesData.map((row) => {
     const garageName = str(row.Garage);
-    const visibleName = str(row.VisibleGarageName) || garageName;
+    const visibleName = safeStr(row.VisibleGarageName) || safeStr(row.Garage);
     const stage = str(row.Stage);
 
     // Find levels for this garage
@@ -77,7 +135,7 @@ export function parseExcelFile(buffer) {
 
     const levels = levelRows.map((lr) => {
       const levelName = str(lr.Level);
-      const visibleLevelName = str(lr.VisibleLevelName) || levelName;
+      const visibleLevelName = safeStr(lr.VisibleLevelName) || safeStr(lr.Level);
       const server = str(lr.Server);
       const maxOccupancy = num(lr.MaximumOccupancy, 100);
 
@@ -92,12 +150,16 @@ export function parseExcelFile(buffer) {
         const camName = str(fli.CameraName);
         const camData = camerasData.find((c) => str(c.Name) === camName);
         if (camData) {
+          const detectionType = str(camData.DetectionType).toUpperCase();
+          let deviceType = 'cam-fli'; // default
+          if (detectionType === 'LPR') deviceType = 'cam-lpr';
+          else if (detectionType === 'PEOPLE' || detectionType === 'PEOPLECOUNTING') deviceType = 'cam-people';
+          else if (detectionType === 'FLI') deviceType = 'cam-fli';
+          
           devices.push({
             id: genId(),
             name: camName,
-            type: 'camera',
-            subType: str(camData.DetectionType) === 'FLI' ? 'fli' :
-                     str(camData.DetectionType) === 'LPR' ? 'lpr' : 'peopleCounting',
+            type: deviceType,
             ipAddress: str(camData.IPAddress),
             port: str(camData.Port),
             rtspUrl: str(camData.RTSPURL),
@@ -110,8 +172,7 @@ export function parseExcelFile(buffer) {
             backOfCarIs: str(fli.BackOfCarIs),
             isEntryExitCamera: bool(fli.IsEntryExitCamera),
             dependentCameraName: str(fli.DependentCameraName),
-            x: 100 + (devices.length % 5) * 80,
-            y: 100 + Math.floor(devices.length / 5) * 80,
+            pendingPlacement: true,
             macAddress: '',
             stream1: str(camData.RTSPURL),
             stream2: '',
@@ -131,12 +192,16 @@ export function parseExcelFile(buffer) {
         const camName = str(camData.Name);
         // Avoid duplicates
         if (devices.some((d) => d.name === camName)) return;
+        const detectionType = str(camData.DetectionType).toUpperCase();
+        let deviceType = 'cam-fli'; // default
+        if (detectionType === 'LPR') deviceType = 'cam-lpr';
+        else if (detectionType === 'PEOPLE' || detectionType === 'PEOPLECOUNTING') deviceType = 'cam-people';
+        else if (detectionType === 'FLI') deviceType = 'cam-fli';
+        
         devices.push({
           id: genId(),
           name: camName,
-          type: 'camera',
-          subType: str(camData.DetectionType) === 'FLI' ? 'fli' :
-                   str(camData.DetectionType) === 'LPR' ? 'lpr' : 'peopleCounting',
+          type: deviceType,
           ipAddress: str(camData.IPAddress),
           port: str(camData.Port),
           rtspUrl: str(camData.RTSPURL),
@@ -145,8 +210,7 @@ export function parseExcelFile(buffer) {
           status: str(camData.Status),
           visibleName: str(camData.VisibleCameraName),
           detectionType: str(camData.DetectionType),
-          x: 100 + (devices.length % 5) * 80,
-          y: 100 + Math.floor(devices.length / 5) * 80,
+          pendingPlacement: true,
           macAddress: '',
           stream1: str(camData.RTSPURL),
           stream2: '',
@@ -167,11 +231,18 @@ export function parseExcelFile(buffer) {
           (s) => str(s.SensorGroupID) === groupId
         );
 
+        // Map sensor protocol to device type
+        const protocolLower = protocol.toLowerCase();
+        let sensorType = 'sensor-nwave'; // default
+        if (protocolLower === 'parksol' || protocolLower === 'parksolution') sensorType = 'sensor-parksol';
+        else if (protocolLower === 'proco') sensorType = 'sensor-proco';
+        else if (protocolLower === 'ensight') sensorType = 'sensor-ensight';
+        else if (protocolLower === 'nwave') sensorType = 'sensor-nwave';
+
         devices.push({
           id: genId(),
           name: `SensorGroup-${groupId}`,
-          type: 'sensor',
-          subType: protocol.toLowerCase() || 'nwave',
+          type: sensorType,
           sensorProtocol: protocol,
           controllerAddress: str(sg.ControllerAddress),
           controllerKey: str(sg.ControllerKey),
@@ -183,8 +254,7 @@ export function parseExcelFile(buffer) {
             parkingType: str(s.ParkingType),
             tempParkingTimeInMinutes: num(s.TempParkingTimeInMinutes),
           })),
-          x: 100 + (devices.length % 5) * 80,
-          y: 100 + Math.floor(devices.length / 5) * 80,
+          pendingPlacement: true,
         });
       });
 
@@ -198,11 +268,15 @@ export function parseExcelFile(buffer) {
           (dc) => str(dc.DisplayName) === displayName
         );
         if (controller && !devices.some((d) => d.name === displayName)) {
+          const displayProtocol = str(controller.DisplayProtocol).toUpperCase();
+          let signType = 'sign-static'; // default
+          if (displayProtocol === 'LED') signType = 'sign-led';
+          else if (displayProtocol === 'DESIGNABLE') signType = 'sign-designable';
+          
           devices.push({
             id: genId(),
             name: displayName,
-            type: 'sign',
-            subType: str(controller.DisplayProtocol) === 'LED' ? 'led' : 'static',
+            type: signType,
             ipAddress: str(controller.IPAddress),
             port: str(controller.Port),
             serialAddress: str(controller.SerialAddress),
@@ -216,11 +290,16 @@ export function parseExcelFile(buffer) {
             keepLevelCountsSeparate: bool(controller.KeepLevelCountsSeparate),
             positionName: str(dl.PositionName),
             levelDisplayName: str(dl.LevelName),
-            x: 100 + (devices.length % 5) * 80,
-            y: 100 + Math.floor(devices.length / 5) * 80,
+            pendingPlacement: true,
           });
         }
       });
+
+      // Security: Track and enforce device limits
+      totalDeviceCount += devices.length;
+      if (totalDeviceCount > MAX_TOTAL_DEVICES) {
+        throw new Error(`Too many devices in file. Maximum allowed is ${MAX_TOTAL_DEVICES}.`);
+      }
 
       return {
         id: genId(),
@@ -258,10 +337,10 @@ export function parseExcelFile(buffer) {
       name: visibleName,
       internalName: garageName,
       stage,
-      address: '',
-      city: '',
-      state: '',
-      zip: '',
+      address: str(row.Address),
+      city: str(row.City),
+      state: str(row.State),
+      zip: str(row.Zip) || str(row.ZipCode),
       image: '',
       contacts: [],
       quickLinks: [],

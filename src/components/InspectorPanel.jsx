@@ -280,6 +280,48 @@ const InspectorPanel = () => {
           </div>
         )}
 
+        {/* ===== SERVER ASSIGNMENT (signs) ===== */}
+        {isSign && (
+          <div className="inspector-section-compact">
+            <label className="section-title-small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                <line x1="6" y1="6" x2="6.01" y2="6" />
+                <line x1="6" y1="18" x2="6.01" y2="18" />
+              </svg>
+              Server
+            </label>
+            <select
+              className="sign-type-select"
+              value={device.serverId || ''}
+              onChange={(e) => updateDevice(device.id, { serverId: e.target.value ? Number(e.target.value) : '' })}
+            >
+              <option value="">No server assigned</option>
+              {(garage?.servers || []).map(s => (
+                <option key={s.id} value={s.id}>{s.name} ({s.serverType})</option>
+              ))}
+            </select>
+            {device.serverId && (() => {
+              const srv = (garage?.servers || []).find(s => s.id === device.serverId);
+              return srv ? (
+                <div style={{
+                  marginTop: 6,
+                  padding: '6px 10px',
+                  background: 'rgba(59, 130, 246, 0.08)',
+                  border: '1px solid rgba(59, 130, 246, 0.2)',
+                  borderRadius: 6,
+                  fontSize: 11,
+                  color: '#93c5fd'
+                }}>
+                  <div style={{ fontWeight: 600 }}>{srv.name}</div>
+                  <div style={{ opacity: 0.8, marginTop: 2 }}>{srv.ipAddress} &middot; {srv.os}</div>
+                </div>
+              ) : null;
+            })()}
+          </div>
+        )}
+
         {/* ===== BASIC INFO ===== */}
         <div className="inspector-section-compact">
           <div className="compact-row">
@@ -510,7 +552,7 @@ const InspectorPanel = () => {
           })()
         )}
 
-        {/* ===== SERVER & SIGN ASSIGNMENT (cameras) ===== */}
+        {/* ===== SERVER ASSIGNMENT (cameras) ===== */}
         {isCamera && (
           <div className="inspector-section-compact">
             <label className="section-title-small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -546,55 +588,6 @@ const InspectorPanel = () => {
                 }}>
                   <div style={{ fontWeight: 600 }}>{srv.name}</div>
                   <div style={{ opacity: 0.8, marginTop: 2 }}>{srv.ipAddress} &middot; {srv.os}</div>
-                </div>
-              ) : null;
-            })()}
-
-            <label className="section-title-small" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12 }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="2" y="4" width="20" height="12" rx="2" />
-                <path d="M6 8h12M6 12h8" />
-                <path d="M12 16v4" />
-              </svg>
-              Sign
-            </label>
-            <select
-              className="sign-type-select"
-              value={device.signId || ''}
-              onChange={(e) => updateDevice(device.id, { signId: e.target.value ? Number(parseFloat(e.target.value)) : '' })}
-            >
-              <option value="">No sign assigned</option>
-              {allLevels.flatMap(lvl =>
-                (lvl.devices || [])
-                  .filter(d => d.type?.startsWith('sign-'))
-                  .map(s => (
-                    <option key={s.id} value={s.id}>{s.name} ({lvl.name})</option>
-                  ))
-              )}
-            </select>
-            {device.signId && (() => {
-              let signDevice = null;
-              let signLevelName = '';
-              for (const lvl of allLevels) {
-                const found = (lvl.devices || []).find(d => d.id === device.signId);
-                if (found) {
-                  signDevice = found;
-                  signLevelName = lvl.name;
-                  break;
-                }
-              }
-              return signDevice ? (
-                <div style={{
-                  marginTop: 6,
-                  padding: '6px 10px',
-                  background: 'rgba(34, 197, 94, 0.08)',
-                  border: '1px solid rgba(34, 197, 94, 0.2)',
-                  borderRadius: 6,
-                  fontSize: 11,
-                  color: '#86efac'
-                }}>
-                  <div style={{ fontWeight: 600 }}>{signDevice.name}</div>
-                  <div style={{ opacity: 0.8, marginTop: 2 }}>{signLevelName} &middot; {signDevice.type}</div>
                 </div>
               ) : null;
             })()}

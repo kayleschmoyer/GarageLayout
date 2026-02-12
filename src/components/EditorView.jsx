@@ -281,8 +281,9 @@ const EditorView = () => {
   const stats = useMemo(() => ({
     cameras: cameras.length,
     spaceMonitors: spaceMonitors.length,
-    signs: signs.length
-  }), [cameras, spaceMonitors, signs]);
+    signs: signs.length,
+    servers: garageServers.length
+  }), [cameras, spaceMonitors, signs, garageServers]);
 
   // Update local time based on garage location's timezone
   React.useEffect(() => {
@@ -1129,6 +1130,33 @@ const EditorView = () => {
                 <span style={{ fontWeight: 600, color: mapFilter.includes('signs') ? '#22c55e' : theme.text }}>{stats.signs}</span>
                 <span>Signs</span>
               </button>
+
+              <button
+                onClick={() => setMapFilter(prev => prev.includes('servers') ? prev.filter(f => f !== 'servers') : [...prev, 'servers'])}
+                title={mapFilter.includes('servers') ? 'Remove servers from filter' : 'Add servers to filter'}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 14px',
+                  background: mapFilter.includes('servers') ? 'rgba(168, 85, 247, 0.2)' : theme.bgButton,
+                  border: `1px solid ${mapFilter.includes('servers') ? '#a855f7' : theme.borderSubtle}`,
+                  borderRadius: 8,
+                  fontSize: 13,
+                  color: mapFilter.includes('servers') ? '#a855f7' : theme.textSecondary,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                  <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                  <line x1="6" y1="6" x2="6.01" y2="6" />
+                  <line x1="6" y1="18" x2="6.01" y2="18" />
+                </svg>
+                <span style={{ fontWeight: 600, color: mapFilter.includes('servers') ? '#a855f7' : theme.text }}>{stats.servers}</span>
+                <span>Servers</span>
+              </button>
             </div>
 
             {/* Action Buttons */}
@@ -1367,6 +1395,29 @@ const EditorView = () => {
                           <path d="M18.364 5.636a9 9 0 010 12.728" />
                         </svg>
                       </button>
+                      <button
+                        onClick={() => { setSidebarCollapsed(false); setActiveTab('servers'); }}
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 8,
+                          border: activeTab === 'servers' ? '1px solid #3b82f6' : '1px solid transparent',
+                          background: activeTab === 'servers' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                          color: activeTab === 'servers' ? '#3b82f6' : theme.textMuted,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                        title="Servers"
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                          <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                          <line x1="6" y1="6" x2="6.01" y2="6" />
+                          <line x1="6" y1="18" x2="6.01" y2="18" />
+                        </svg>
+                      </button>
                     </div>
                   ) : (
                     <>
@@ -1407,6 +1458,18 @@ const EditorView = () => {
                         </svg>
                         <span className="tab-label-modern">Space Monitoring</span>
                       </button>
+                      <button
+                        className={`palette-tab-modern ${activeTab === 'servers' ? 'active' : ''}`}
+                        onClick={() => { setActiveTab('servers'); setShowAddForm(false); }}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                          <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                          <line x1="6" y1="6" x2="6.01" y2="6" />
+                          <line x1="6" y1="18" x2="6.01" y2="18" />
+                        </svg>
+                        <span className="tab-label-modern">Servers</span>
+                      </button>
                     </div>
                   </div>
 
@@ -1414,16 +1477,18 @@ const EditorView = () => {
                     {!showAddForm ? (
                       <>
                         <div className="palette-title">
-                          {activeTab === 'cameras' ? 'Cameras' : activeTab === 'signs' ? 'Signs' : 'Space Monitoring'} on {level.name}
+                          {activeTab === 'cameras' ? 'Cameras' : activeTab === 'signs' ? 'Signs' : activeTab === 'servers' ? 'Servers' : 'Space Monitoring'} {activeTab === 'servers' ? `for ${garage?.name || 'Site'}` : `on ${level.name}`}
                         </div>
 
-                        <button
-                          className="btn-sidebar-action primary"
-                          style={{ marginBottom: 16 }}
-                          onClick={() => setShowAddForm(true)}
-                        >
-                          + Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'signs' ? 'Sign' : 'Sensor Group'}
-                        </button>
+                        {activeTab !== 'servers' && (
+                          <button
+                            className="btn-sidebar-action primary"
+                            style={{ marginBottom: 16 }}
+                            onClick={() => setShowAddForm(true)}
+                          >
+                            + Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'signs' ? 'Sign' : 'Sensor Group'}
+                          </button>
+                        )}
 
                         <div className="device-list-modern" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                           {/* Place All Button - show if there are pending devices */}
@@ -1749,6 +1814,66 @@ const EditorView = () => {
                                   ))}
                                 </div>
                               )}
+                            </div>
+                          ))}
+
+                          {/* Servers Tab Content */}
+                          {activeTab === 'servers' && garageServers.length === 0 && (
+                            <div className="sidebar-empty-state">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                              </svg>
+                              <p>No servers configured</p>
+                              <p style={{ fontSize: 11, opacity: 0.7 }}>Servers can be managed from the Site Overview page</p>
+                            </div>
+                          )}
+
+                          {activeTab === 'servers' && garageServers.map(server => (
+                            <div
+                              key={server.id}
+                              className="modern-device-item"
+                              style={{
+                                cursor: 'default'
+                              }}>
+                              <div className="device-icon-wrapper" style={{ background: 'rgba(168, 85, 247, 0.15)', color: '#a855f7' }}>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                  <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                                  <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                                  <line x1="6" y1="6" x2="6.01" y2="6" />
+                                  <line x1="6" y1="18" x2="6.01" y2="18" />
+                                </svg>
+                              </div>
+                              <div className="device-info-modern" style={{ flex: 1 }}>
+                                <span className="device-name-modern">{server.name}</span>
+                                <span className="device-type-modern" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  {server.ipAddress && <span>{server.ipAddress}</span>}
+                                  {server.serverType && <span style={{ opacity: 0.7 }}>• {server.serverType}</span>}
+                                </span>
+                                {server.os && (
+                                  <span className="device-type-modern" style={{ fontSize: 10, opacity: 0.6 }}>
+                                    {server.os}
+                                  </span>
+                                )}
+                              </div>
+                              <span style={{
+                                fontSize: 10,
+                                color: '#a855f7',
+                                background: 'rgba(168, 85, 247, 0.12)',
+                                padding: '2px 8px',
+                                borderRadius: 4
+                              }}>
+                                {(() => {
+                                  // Count devices assigned to this server across all levels
+                                  let count = 0;
+                                  safeArray(garage?.levels).forEach(lvl => {
+                                    safeArray(lvl?.devices).forEach(d => {
+                                      if (d?.serverId === server.id) count++;
+                                    });
+                                  });
+                                  return `${count} device${count !== 1 ? 's' : ''}`;
+                                })()}
+                              </span>
                             </div>
                           ))}
                         </div>

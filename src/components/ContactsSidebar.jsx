@@ -253,12 +253,7 @@ const ContactsSidebar = ({ contacts, garageName, onUpdateContacts }) => {
         setCurrentContact(prev => ({ ...prev, [field]: value }));
     }, []);
 
-    const displayName = useMemo(() => {
-        if (typeof garageName === 'string' && garageName.trim()) {
-            return garageName.trim();
-        }
-        return 'Contacts';
-    }, [garageName]);
+    const displayName = 'Contacts';
 
     const isFormValid = useMemo(() => {
         return typeof currentContact.name === 'string' && currentContact.name.trim().length > 0;

@@ -372,6 +372,16 @@ const Weather = React.memo(({ address }) => {
     }
 
     if (!state.data) {
+        // Show placeholder when no address is provided
+        const rawAddress = typeof address === 'string' ? address.trim() : '';
+        if (!rawAddress) {
+            return (
+                <div className="status-badge" style={{ opacity: 0.5 }} title="Add an address to show weather">
+                    <span>🌡️</span>
+                    <span style={{ fontSize: 12 }}>No location set</span>
+                </div>
+            );
+        }
         return null;
     }
 

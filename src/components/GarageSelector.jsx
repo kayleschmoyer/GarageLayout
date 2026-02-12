@@ -472,7 +472,7 @@ const GarageSelector = () => {
                     <line x1="12" y1="8" x2="12" y2="16" />
                     <line x1="8" y1="12" x2="16" y2="12" />
                   </svg>
-                  <span>{stats.garages} Properties</span>
+                  <span>{stats.garages} Sites</span>
                 </div>
 
                 <div className="status-badge">
@@ -573,7 +573,7 @@ const GarageSelector = () => {
 
             <div className="content-area">
               <div className="section-tools">
-                <div className="section-label">All Properties</div>
+                <div className="section-label">All Sites</div>
               </div>
 
               <div className="modern-grid">

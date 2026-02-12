@@ -163,10 +163,33 @@ export default function SiteImporter() {
 
   const handleConfirmImport = useCallback(() => {
     if (!importResult) return;
-    setGarages(importResult.parsed.garages);
+    
+    // Add the Google Sheet as a quick link to the first garage
+    const garagesWithLink = importResult.parsed.garages.map((garage, index) => {
+      if (index === 0 && selectedFile) {
+        // Create Google Drive link for the imported file
+        const driveLink = selectedFile.webViewLink || 
+          `https://drive.google.com/file/d/${selectedFile.id}/view`;
+        
+        const newQuickLink = {
+          id: 1,
+          name: selectedFile.name.replace(/\.xlsx?$/i, '') || 'Configuration Sheet',
+          url: driveLink,
+          icon: 'sheets'
+        };
+        
+        return {
+          ...garage,
+          quickLinks: [newQuickLink, ...garage.quickLinks]
+        };
+      }
+      return garage;
+    });
+    
+    setGarages(garagesWithLink);
     setShowConfirmModal(false);
     setCurrentView('garages');
-  }, [importResult, setGarages, setCurrentView]);
+  }, [importResult, selectedFile, setGarages, setCurrentView]);
 
   // ---- Skip / manual mode ----
   const handleSkip = useCallback(() => {
@@ -183,154 +206,154 @@ export default function SiteImporter() {
   // ========================= RENDER =========================
 
   return (
-    <div className="selector-view">
-      {/* Header */}
-      <header className="selector-header-modern">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
-          </div>
-          <span style={{ fontSize: 18, fontWeight: 600, color: 'var(--joy-palette-neutral-800, #fafafa)' }}>
-            Garage Layout Editor
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {authenticated && (
-            <button
-              onClick={handleSignOut}
-              style={{ background: 'none', border: '1px solid #3f3f46', color: '#a1a1aa', fontSize: 13, padding: '6px 12px', borderRadius: 6, cursor: 'pointer' }}
-            >
-              Sign Out
-            </button>
-          )}
-        </div>
-      </header>
-
+    <div className="selector-view site-importer-fullpage">
       {/* Main Content */}
       <div className="site-importer-content">
         {!authenticated ? (
           /* ---- Landing / Sign-In View ---- */
           <div className="site-importer-landing">
-            <div className="site-importer-hero">
-              <div className="site-importer-icon-large">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="16" y1="13" x2="8" y2="13" />
-                  <line x1="16" y1="17" x2="8" y2="17" />
-                  <polyline points="10 9 9 9 8 9" />
-                </svg>
+            <div className="site-importer-card">
+              {/* Logo Section */}
+              <div className="site-importer-logo-section">
+                <img 
+                  src="https://www.ensight-technologies.com/wp-content/uploads/2023/08/Layer_1-8.png" 
+                  alt="Ensight Technologies" 
+                  className="site-importer-company-logo"
+                  referrerPolicy="no-referrer"
+                  crossOrigin="anonymous"
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
               </div>
-              <h1 className="site-importer-title">Import Site Configuration</h1>
-              <p className="site-importer-subtitle">
-                Connect to Google Drive and select an Excel configuration file to automatically
-                build your garages, levels, cameras, signs, and sensors.
-              </p>
+              
+              {/* Welcome Content */}
+              <div className="site-importer-hero">
+                <h1 className="site-importer-title">Site Editor</h1>
+                <p className="site-importer-subtitle">
+                  Sign in to manage your parking infrastructure. Import configurations or start fresh.
+                </p>
 
-              <button
-                className="site-importer-google-btn"
-                onClick={handleSignIn}
-                disabled={loading}
-              >
-                <svg width="20" height="20" viewBox="0 0 48 48">
-                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
-                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
-                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
-                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
-                </svg>
-                {loading ? 'Connecting...' : 'Sign in with Google'}
-              </button>
-
-              <div className="site-importer-divider">
-                <span>or</span>
+                {/* Sign In Button */}
+                <button
+                  className="site-importer-google-btn"
+                  onClick={handleSignIn}
+                  disabled={loading}
+                >
+                  <div className="google-btn-icon">
+                    <svg width="16" height="16" viewBox="0 0 48 48">
+                      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                    </svg>
+                  </div>
+                  <span>{loading ? 'Connecting...' : 'Continue with Google'}</span>
+                  <svg className="google-btn-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14M12 5l7 7-7 7" />
+                  </svg>
+                </button>
               </div>
-
-              <button
-                className="site-importer-skip-btn"
-                onClick={handleSkip}
-              >
-                Start from scratch
-              </button>
+              
+              {/* Features Section */}
+              <div className="site-importer-features">
+                <div className="site-importer-feature">
+                  <div className="feature-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                      <line x1="12" y1="22.08" x2="12" y2="12" />
+                    </svg>
+                  </div>
+                  <div className="feature-text">
+                    <strong>Import Config</strong>
+                    <span>From Google Drive</span>
+                  </div>
+                </div>
+                <div className="site-importer-feature">
+                  <div className="feature-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <line x1="3" y1="9" x2="21" y2="9" />
+                      <line x1="9" y1="21" x2="9" y2="9" />
+                    </svg>
+                  </div>
+                  <div className="feature-text">
+                    <strong>Visual Editor</strong>
+                    <span>Drag & drop</span>
+                  </div>
+                </div>
+                <div className="site-importer-feature">
+                  <div className="feature-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                    </svg>
+                  </div>
+                  <div className="feature-text">
+                    <strong>Export Data</strong>
+                    <span>Multiple formats</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {error && (
-              <div className="site-importer-error">
-                {error.includes('redirect_uri_mismatch') ? (
-                  <>
-                    <strong>OAuth origin not registered</strong>
-                    <div style={{ marginTop: 8, fontSize: 13, color: '#fbbf24', lineHeight: 1.6 }}>
-                      <p style={{ margin: '0 0 8px' }}>
-                        The origin <code style={{ background: '#27272a', padding: '2px 6px', borderRadius: 3, color: '#f0f0f0' }}>{window.location.origin}</code> is
-                        not authorized for this OAuth client.
-                      </p>
-                      <p style={{ margin: '0 0 4px' }}><strong>To fix this:</strong></p>
-                      <ol style={{ margin: '0', paddingLeft: 20 }}>
-                        <li>
-                          Open the{' '}
-                          <a href={`https://console.cloud.google.com/apis/credentials/oauthclient/${CLIENT_ID}`} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>
-                            Google Cloud Console &rarr; OAuth Client
-                          </a>
-                        </li>
-                        <li>
-                          Under <em>Authorized JavaScript Origins</em>, add: <code style={{ background: '#27272a', padding: '2px 6px', borderRadius: 3, color: '#f0f0f0' }}>{window.location.origin}</code>
-                        </li>
-                        <li>Save and wait a few minutes for changes to propagate</li>
-                      </ol>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {error}
-                    {error.includes('invalid_request') && (
-                      <div style={{ marginTop: 8, fontSize: 12, color: '#fbbf24', lineHeight: 1.5 }}>
-                        <strong>Hint:</strong> This may be a configuration issue. Verify your OAuth Client ID
-                        and Authorized JavaScript Origins in the{' '}
-                        <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>
-                          Google Cloud Console
-                        </a>.
+              <div className="site-importer-error-card">
+                <div className="error-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                </div>
+                <div className="error-content">
+                  {error.includes('redirect_uri_mismatch') ? (
+                    <>
+                      <strong>OAuth origin not registered</strong>
+                      <div style={{ marginTop: 6, fontSize: 11, color: '#fbbf24', lineHeight: 1.5 }}>
+                        <p style={{ margin: '0 0 6px' }}>
+                          The origin <code style={{ background: '#27272a', padding: '2px 4px', borderRadius: 3, color: '#f0f0f0', fontSize: 10 }}>{window.location.origin}</code> is
+                          not authorized for this OAuth client.
+                        </p>
+                        <p style={{ margin: '0 0 4px' }}><strong>To fix this:</strong></p>
+                        <ol style={{ margin: '0', paddingLeft: 16, fontSize: 10 }}>
+                          <li>
+                            Open the{' '}
+                            <a href={`https://console.cloud.google.com/apis/credentials/oauthclient/${CLIENT_ID}`} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>
+                              Google Cloud Console
+                            </a>
+                          </li>
+                          <li>
+                            Add origin: <code style={{ background: '#27272a', padding: '1px 4px', borderRadius: 2, color: '#f0f0f0', fontSize: 9 }}>{window.location.origin}</code>
+                          </li>
+                          <li>Save and wait for propagation</li>
+                        </ol>
                       </div>
-                    )}
-                  </>
-                )}
+                    </>
+                  ) : (
+                    <>
+                      {error}
+                      {error.includes('invalid_request') && (
+                        <div style={{ marginTop: 6, fontSize: 10, color: '#fbbf24', lineHeight: 1.4 }}>
+                          <strong>Hint:</strong> Verify OAuth Client ID in the{' '}
+                          <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>
+                            Cloud Console
+                          </a>.
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             )}
-
-            <div className="site-importer-info">
-              <h3>How it works</h3>
-              <div className="site-importer-steps">
-                <div className="site-importer-step">
-                  <div className="site-importer-step-num">1</div>
-                  <div>
-                    <strong>Sign in with Google</strong>
-                    <p>Authenticate with your Google account to access Drive files.</p>
-                  </div>
-                </div>
-                <div className="site-importer-step">
-                  <div className="site-importer-step-num">2</div>
-                  <div>
-                    <strong>Select a configuration file</strong>
-                    <p>Browse and search .xlsx files from the shared configuration folder.</p>
-                  </div>
-                </div>
-                <div className="site-importer-step">
-                  <div className="site-importer-step-num">3</div>
-                  <div>
-                    <strong>Auto-build your site</strong>
-                    <p>Garages, levels, cameras, signs, and sensors are created automatically.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         ) : (
           /* ---- File Browser View ---- */
           <div className="site-importer-browser">
             <div className="site-importer-browser-header">
               <h2 className="site-importer-browser-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: 'middle', marginRight: 8 }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                 </svg>
                 Select Configuration File
@@ -343,7 +366,7 @@ export default function SiteImporter() {
             {/* Search Bar */}
             <div className="site-importer-search-bar">
               <div className="site-importer-search-input-wrap">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#71717a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="site-importer-search-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#71717a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="site-importer-search-icon">
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
@@ -457,7 +480,7 @@ export default function SiteImporter() {
                     </>
                   ) : (
                     <>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                         <polyline points="7 10 12 15 17 10" />
                         <line x1="12" y1="15" x2="12" y2="3" />
@@ -474,70 +497,123 @@ export default function SiteImporter() {
 
       {/* Import Confirmation Modal */}
       <Modal open={showConfirmModal} onClose={() => setShowConfirmModal(false)}>
-        <ModalDialog sx={{ ...MODAL_SX, maxWidth: 620 }}>
-          <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #27272a' }}>
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#fafafa' }}>
-              Import Summary
-            </h3>
-            <p style={{ margin: '6px 0 0', fontSize: 13, color: '#71717a' }}>
-              {importResult?.fileName}
-            </p>
+        <ModalDialog sx={{ ...MODAL_SX, maxWidth: 680, p: 0 }}>
+          {/* Header */}
+          <div className="import-modal-header">
+            <div className="import-modal-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+            </div>
+            <div className="import-modal-header-text">
+              <h3 className="import-modal-title">Import Summary</h3>
+              <p className="import-modal-filename">{importResult?.fileName}</p>
+            </div>
           </div>
+
           {importResult && (
-            <div style={{ padding: '16px 24px' }}>
+            <div className="import-modal-body">
               {/* Summary stats */}
-              <div className="site-importer-summary-grid">
-                <div className="site-importer-summary-card">
-                  <div className="site-importer-summary-num">{importResult.summary.totalGarages}</div>
-                  <div className="site-importer-summary-label">Garages</div>
+              <div className="import-modal-stats">
+                <div className="import-modal-stat">
+                  <div className="import-modal-stat-icon garages">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                      <polyline points="9 22 9 12 15 12 15 22" />
+                    </svg>
+                  </div>
+                  <div className="import-modal-stat-info">
+                    <div className="import-modal-stat-num">{importResult.summary.totalGarages}</div>
+                    <div className="import-modal-stat-label">Garages</div>
+                  </div>
                 </div>
-                <div className="site-importer-summary-card">
-                  <div className="site-importer-summary-num">{importResult.summary.totalLevels}</div>
-                  <div className="site-importer-summary-label">Levels</div>
+                <div className="import-modal-stat">
+                  <div className="import-modal-stat-icon levels">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <line x1="3" y1="9" x2="21" y2="9" />
+                      <line x1="3" y1="15" x2="21" y2="15" />
+                    </svg>
+                  </div>
+                  <div className="import-modal-stat-info">
+                    <div className="import-modal-stat-num">{importResult.summary.totalLevels}</div>
+                    <div className="import-modal-stat-label">Levels</div>
+                  </div>
                 </div>
-                <div className="site-importer-summary-card">
-                  <div className="site-importer-summary-num">{importResult.summary.totalDevices}</div>
-                  <div className="site-importer-summary-label">Devices</div>
+                <div className="import-modal-stat">
+                  <div className="import-modal-stat-icon devices">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="4" y="4" width="16" height="16" rx="2" ry="2" />
+                      <rect x="9" y="9" width="6" height="6" />
+                      <line x1="9" y1="1" x2="9" y2="4" />
+                      <line x1="15" y1="1" x2="15" y2="4" />
+                      <line x1="9" y1="20" x2="9" y2="23" />
+                      <line x1="15" y1="20" x2="15" y2="23" />
+                      <line x1="20" y1="9" x2="23" y2="9" />
+                      <line x1="20" y1="14" x2="23" y2="14" />
+                      <line x1="1" y1="9" x2="4" y2="9" />
+                      <line x1="1" y1="14" x2="4" y2="14" />
+                    </svg>
+                  </div>
+                  <div className="import-modal-stat-info">
+                    <div className="import-modal-stat-num">{importResult.summary.totalDevices}</div>
+                    <div className="import-modal-stat-label">Devices</div>
+                  </div>
                 </div>
               </div>
 
               {/* Tab breakdown */}
-              <div style={{ marginTop: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
+              <div className="import-modal-sheets">
+                <div className="import-modal-sheets-header">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <line x1="3" y1="9" x2="21" y2="9" />
+                    <line x1="9" y1="21" x2="9" y2="9" />
+                  </svg>
                   Sheet Data
                 </div>
-                <div className="site-importer-tab-list">
+                <div className="import-modal-sheets-list">
                   {Object.entries(importResult.summary.tabCounts).map(([tab, count]) => (
-                    <div key={tab} className="site-importer-tab-row">
-                      <span className="site-importer-tab-name">{tab}</span>
-                      <span className="site-importer-tab-count">{count} rows</span>
+                    <div key={tab} className="import-modal-sheet-row">
+                      <span className="import-modal-sheet-name">{tab}</span>
+                      <span className="import-modal-sheet-count">{count} rows</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <p style={{ margin: '16px 0 0', fontSize: 13, color: '#f59e0b', lineHeight: 1.5 }}>
-                This will replace all existing garages and levels with the imported data.
-              </p>
+              {/* Warning */}
+              <div className="import-modal-warning">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <span>This will replace all existing garages and levels with the imported data.</span>
+              </div>
             </div>
           )}
-          <div style={{ padding: '12px 24px 20px', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <Button
-              variant="outlined"
-              color="neutral"
-              size="sm"
+
+          {/* Footer */}
+          <div className="import-modal-footer">
+            <button 
+              className="import-modal-btn cancel"
               onClick={() => setShowConfirmModal(false)}
-              sx={{ borderColor: '#3f3f46', color: '#a1a1aa', '&:hover': { bgcolor: '#27272a' } }}
             >
               Cancel
-            </Button>
-            <Button
-              size="sm"
+            </button>
+            <button 
+              className="import-modal-btn confirm"
               onClick={handleConfirmImport}
-              sx={{ bgcolor: '#22c55e', '&:hover': { bgcolor: '#16a34a' } }}
             >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
               Confirm Import
-            </Button>
+            </button>
           </div>
         </ModalDialog>
       </Modal>

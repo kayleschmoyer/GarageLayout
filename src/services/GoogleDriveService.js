@@ -11,10 +11,20 @@ const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '803815610394-q9jiico
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 const SHARED_FOLDER_ID = import.meta.env.VITE_GOOGLE_SHARED_FOLDER_ID || '1OZXQcKjsZY59gnPFDThSZehJzxsvtjPU';
 
+// Security: Maximum file size for downloads (50MB)
+const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+
+// Security: Allowed MIME types for file operations
+const ALLOWED_MIME_TYPES = Object.freeze([
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+  'application/vnd.ms-excel', // .xls
+]);
+
 export { CLIENT_ID };
 
 let tokenClient = null;
 let accessToken = null;
+let tokenExpiresAt = null; // Track token expiration
 
 /**
  * Load the Google Identity Services script dynamically
@@ -79,6 +89,12 @@ export async function signInWithGoogle() {
             return;
           }
           accessToken = response.access_token;
+          // Track token expiration (expires_in is in seconds)
+          if (response.expires_in) {
+            tokenExpiresAt = Date.now() + (response.expires_in * 1000) - 60000; // 1 min buffer
+          } else {
+            tokenExpiresAt = Date.now() + 3600000; // Default 1 hour
+          }
           resolve(accessToken);
         },
         error_callback: (err) => {
@@ -116,7 +132,23 @@ export async function signInWithGoogle() {
  * Check if we currently have a valid access token
  */
 export function isSignedIn() {
-  return !!accessToken;
+  // Check both token existence and expiration
+  if (!accessToken) return false;
+  if (tokenExpiresAt && Date.now() > tokenExpiresAt) {
+    // Token expired, clear it
+    accessToken = null;
+    tokenExpiresAt = null;
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Check if token is expired or will expire soon
+ */
+export function isTokenExpired() {
+  if (!accessToken || !tokenExpiresAt) return true;
+  return Date.now() > tokenExpiresAt;
 }
 
 /**
@@ -128,6 +160,30 @@ export function signOut() {
   }
   accessToken = null;
   tokenClient = null;
+  tokenExpiresAt = null;
+}
+
+/**
+ * Validate file ID format to prevent injection
+ * Google Drive file IDs are alphanumeric with hyphens and underscores
+ */
+function isValidFileId(fileId) {
+  if (!fileId || typeof fileId !== 'string') return false;
+  // Google Drive IDs are typically 28-44 characters, alphanumeric with - and _
+  return /^[a-zA-Z0-9_-]{10,100}$/.test(fileId);
+}
+
+/**
+ * Sanitize search query to prevent query injection
+ */
+function sanitizeSearchQuery(query) {
+  if (!query || typeof query !== 'string') return '';
+  // Remove potentially dangerous characters, keep alphanumeric, spaces, and common punctuation
+  return query
+    .trim()
+    .slice(0, 100) // Limit length
+    .replace(/[^\w\s.-]/g, '') // Only allow word chars, spaces, dots, hyphens
+    .replace(/'/g, "\\'"); // Escape quotes
 }
 
 /**
@@ -141,22 +197,34 @@ export function signOut() {
  * @returns {Promise<{files: Array, nextPageToken: string|null}>}
  */
 export async function listXlsxFiles({ pageToken, pageSize = 100, searchQuery } = {}) {
+  // Security: Check token validity
   if (!accessToken) {
     throw new Error('Not signed in. Please sign in with Google first.');
   }
+  
+  if (isTokenExpired()) {
+    accessToken = null;
+    tokenExpiresAt = null;
+    throw new Error('Session expired. Please sign in again.');
+  }
+
+  // Security: Validate pageSize to prevent abuse
+  const safePageSize = Math.min(Math.max(1, parseInt(pageSize, 10) || 100), 100);
 
   // Build the query: xlsx files in the shared folder, not trashed
   let q = `'${SHARED_FOLDER_ID}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed=false`;
   if (searchQuery && searchQuery.trim()) {
-    // Escape single quotes in search
-    const escaped = searchQuery.trim().replace(/'/g, "\\'");
-    q += ` and name contains '${escaped}'`;
+    // Security: Sanitize search query
+    const sanitized = sanitizeSearchQuery(searchQuery);
+    if (sanitized) {
+      q += ` and name contains '${sanitized}'`;
+    }
   }
 
   const params = new URLSearchParams({
     q,
-    pageSize: String(pageSize),
-    fields: 'nextPageToken,files(id,name,modifiedTime,size,owners,iconLink,webViewLink)',
+    pageSize: String(safePageSize),
+    fields: 'nextPageToken,files(id,name,modifiedTime,size,mimeType,owners,iconLink,webViewLink)',
     orderBy: 'modifiedTime desc',
     supportsAllDrives: 'true',
     includeItemsFromAllDrives: 'true',
@@ -174,6 +242,7 @@ export async function listXlsxFiles({ pageToken, pageSize = 100, searchQuery } =
 
   if (response.status === 401) {
     accessToken = null;
+    tokenExpiresAt = null;
     throw new Error('Session expired. Please sign in again.');
   }
 
@@ -183,8 +252,14 @@ export async function listXlsxFiles({ pageToken, pageSize = 100, searchQuery } =
   }
 
   const data = await response.json();
+  
+  // Security: Filter out any files that don't match allowed MIME types
+  const safeFiles = (data.files || []).filter(file => 
+    ALLOWED_MIME_TYPES.includes(file.mimeType)
+  );
+  
   return {
-    files: data.files || [],
+    files: safeFiles,
     nextPageToken: data.nextPageToken || null,
   };
 }
@@ -196,12 +271,56 @@ export async function listXlsxFiles({ pageToken, pageSize = 100, searchQuery } =
  * @returns {Promise<ArrayBuffer>}
  */
 export async function downloadFile(fileId) {
+  // Security: Validate file ID format
+  if (!isValidFileId(fileId)) {
+    throw new Error('Invalid file ID format.');
+  }
+  
   if (!accessToken) {
     throw new Error('Not signed in. Please sign in with Google first.');
   }
+  
+  if (isTokenExpired()) {
+    accessToken = null;
+    tokenExpiresAt = null;
+    throw new Error('Session expired. Please sign in again.');
+  }
 
+  // Security: First fetch file metadata to validate size and type
+  const metaResponse = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,size,mimeType&supportsAllDrives=true`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  );
+  
+  if (metaResponse.status === 401) {
+    accessToken = null;
+    tokenExpiresAt = null;
+    throw new Error('Session expired. Please sign in again.');
+  }
+  
+  if (!metaResponse.ok) {
+    const err = await metaResponse.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Failed to get file info (${metaResponse.status})`);
+  }
+  
+  const fileMeta = await metaResponse.json();
+  
+  // Security: Validate MIME type
+  if (!ALLOWED_MIME_TYPES.includes(fileMeta.mimeType)) {
+    throw new Error('File type not allowed. Only Excel files (.xlsx, .xls) are supported.');
+  }
+  
+  // Security: Validate file size
+  const fileSize = parseInt(fileMeta.size, 10);
+  if (fileSize > MAX_FILE_SIZE_BYTES) {
+    throw new Error(`File too large. Maximum size is ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB.`);
+  }
+
+  // Now download the actual file content
   const response = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`,
     {
       headers: { Authorization: `Bearer ${accessToken}` },
     }
@@ -209,6 +328,7 @@ export async function downloadFile(fileId) {
 
   if (response.status === 401) {
     accessToken = null;
+    tokenExpiresAt = null;
     throw new Error('Session expired. Please sign in again.');
   }
 
