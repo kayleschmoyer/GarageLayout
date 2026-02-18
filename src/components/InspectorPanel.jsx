@@ -22,6 +22,8 @@ const InspectorPanel = () => {
   const [showPreviewFullscreen, setShowPreviewFullscreen] = useState(false);
   const [overrideMessage, setOverrideMessage] = useState(null);
   const [activeStreamTab, setActiveStreamTab] = useState(1);
+  const [activeInspectorTab, setActiveInspectorTab] = useState('general');
+  const [configExportMessage, setConfigExportMessage] = useState(null);
   const fileInputRef = useRef(null);
 
   const garage = garages.find(g => g.id === selectedGarageId);
@@ -34,6 +36,11 @@ const InspectorPanel = () => {
       setSelectedDevice(null);
     }
   }, [selectedDevice, currentLevel, device, setSelectedDevice]);
+
+  // Reset inspector tab when device changes
+  useEffect(() => {
+    setActiveInspectorTab('general');
+  }, [device?.id]);
 
   // Clear override message after 3 seconds
   useEffect(() => {
@@ -121,8 +128,6 @@ const InspectorPanel = () => {
       time: timeStr
     });
   };
-
-  const [configExportMessage, setConfigExportMessage] = useState(null);
 
   // Export device config files
   const exportDeviceConfigFiles = () => {
@@ -237,6 +242,33 @@ const InspectorPanel = () => {
     updateDevice(device.id, { displayMapping: updated });
   };
 
+  // ===== TAB DEFINITIONS =====
+  const getInspectorTabs = () => {
+    if (isCamera) return [
+      { id: 'general', label: 'General' },
+      { id: 'visual', label: 'Visual' },
+      { id: 'network', label: 'Network' },
+      { id: 'export', label: 'Export' },
+    ];
+    if (isSign) return [
+      { id: 'general', label: 'General' },
+      { id: 'display', label: 'Display' },
+      { id: 'network', label: 'Network' },
+      { id: 'export', label: 'Export' },
+    ];
+    if (isSpaceMonitor) return [
+      { id: 'general', label: 'General' },
+      { id: 'media', label: 'Media' },
+      { id: 'export', label: 'Export' },
+    ];
+    return [
+      { id: 'general', label: 'General' },
+      { id: 'export', label: 'Export' },
+    ];
+  };
+
+  const inspectorTabs = getInspectorTabs();
+
   return (
     <div className="inspector-panel-compact" onClick={(e) => e.stopPropagation()}>
       {/* Header */}
@@ -252,236 +284,478 @@ const InspectorPanel = () => {
         </div>
       </div>
 
+      {/* Tab Bar */}
+      <div className="inspector-tab-bar">
+        {inspectorTabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveInspectorTab(tab.id)}
+            className={`inspector-tab-btn ${activeInspectorTab === tab.id ? 'active' : ''}`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {/* Scrollable content */}
       <div className="inspector-scroll">
-        
-        {/* ===== SIGN TYPE SELECTOR (for signs only) ===== */}
-        {isSign && (
-          <div className="inspector-section-compact">
-            <label className="section-title-small">Sign Type</label>
-            <select
-              className="sign-type-select"
-              value={device.type}
-              onChange={(e) => {
-                const newType = e.target.value;
-                const updates = {
-                  type: newType,
-                  previewUrl: newType === 'sign-designable' ? (device.previewUrl || '') : undefined,
-                  displayMapping: newType === 'sign-static' ? (device.displayMapping || [selectedLevelId]) : undefined,
-                  displayStatus: newType === 'sign-static' ? (device.displayStatus || 'OPEN') : undefined
-                };
-                updateDevice(device.id, updates);
+
+        {/* Dual-lens stream selector - always visible for dual-lens cameras */}
+        {isCamera && isDualLens && (
+          <div className="stream-tabs-inspector" style={{ display: 'flex', gap: 4, padding: '10px 12px 6px' }}>
+            <button
+              className={`stream-tab-btn ${activeStreamTab === 1 ? 'active' : ''}`}
+              onClick={() => setActiveStreamTab(1)}
+              style={{
+                flex: 1,
+                padding: '7px 10px',
+                border: activeStreamTab === 1 ? '2px solid #3b82f6' : '1px solid #3f3f46',
+                background: activeStreamTab === 1 ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                borderRadius: 6,
+                cursor: 'pointer',
+                color: '#fafafa',
+                fontWeight: activeStreamTab === 1 ? 600 : 400,
+                fontSize: 11
               }}
             >
-              <option value="sign-led">LED Sign</option>
-              <option value="sign-static">Static Sign</option>
-              <option value="sign-designable">Designable Sign</option>
-            </select>
+              Stream 1 {device.stream1?.streamType ? `(${device.stream1.streamType === 'cam-fli' ? 'FLI' : 'LPR'})` : ''}
+            </button>
+            <button
+              className={`stream-tab-btn ${activeStreamTab === 2 ? 'active' : ''}`}
+              onClick={() => setActiveStreamTab(2)}
+              style={{
+                flex: 1,
+                padding: '7px 10px',
+                border: activeStreamTab === 2 ? '2px solid #3b82f6' : '1px solid #3f3f46',
+                background: activeStreamTab === 2 ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                borderRadius: 6,
+                cursor: 'pointer',
+                color: '#fafafa',
+                fontWeight: activeStreamTab === 2 ? 600 : 400,
+                fontSize: 11
+              }}
+            >
+              Stream 2 {device.stream2?.streamType ? `(${device.stream2.streamType === 'cam-fli' ? 'FLI' : 'LPR'})` : ''}
+            </button>
           </div>
         )}
 
-        {/* ===== BASIC INFO ===== */}
-        <div className="inspector-section-compact">
-          <div className="compact-row">
-            <label>Name</label>
-            <input
-              type="text"
-              value={device.name || ''}
-              onChange={(e) => updateDevice(device.id, { name: e.target.value })}
-            />
-          </div>
-
-          {/* MAC Address for Cameras and Signs */}
-          {(isCamera || isSign) && (
-            <div className="compact-row">
-              <label>MAC Address</label>
-              <input
-                type="text"
-                value={device.macAddress || ''}
-                placeholder="00:1A:2B:3C:4D:5E"
-                onChange={(e) => updateDevice(device.id, { macAddress: e.target.value })}
-              />
-            </div>
-          )}
-
-          {/* Stream Tabs for Dual Lens Cameras */}
-          {isCamera && isDualLens && (
-            <div className="stream-tabs-inspector" style={{ display: 'flex', gap: 4, margin: '12px 0' }}>
-              <button
-                className={`stream-tab-btn ${activeStreamTab === 1 ? 'active' : ''}`}
-                onClick={() => setActiveStreamTab(1)}
-                style={{
-                  flex: 1,
-                  padding: '8px 12px',
-                  border: activeStreamTab === 1 ? '2px solid #3b82f6' : '1px solid #3f3f46',
-                  background: activeStreamTab === 1 ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  color: '#fafafa',
-                  fontWeight: activeStreamTab === 1 ? 600 : 400,
-                  fontSize: 12
-                }}
-              >
-                Stream 1 {device.stream1?.streamType ? `(${device.stream1.streamType === 'cam-fli' ? 'FLI' : 'LPR'})` : ''}
-              </button>
-              <button
-                className={`stream-tab-btn ${activeStreamTab === 2 ? 'active' : ''}`}
-                onClick={() => setActiveStreamTab(2)}
-                style={{
-                  flex: 1,
-                  padding: '8px 12px',
-                  border: activeStreamTab === 2 ? '2px solid #3b82f6' : '1px solid #3f3f46',
-                  background: activeStreamTab === 2 ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  color: '#fafafa',
-                  fontWeight: activeStreamTab === 2 ? 600 : 400,
-                  fontSize: 12
-                }}
-              >
-                Stream 2 {device.stream2?.streamType ? `(${device.stream2.streamType === 'cam-fli' ? 'FLI' : 'LPR'})` : ''}
-              </button>
-            </div>
-          )}
-
-          {/* Stream Type Selector for Cameras */}
-          {isCamera && (
-            <div className="compact-row" style={{ marginBottom: 8 }}>
-              <label>Stream Type</label>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {streamTypeOptions.map(opt => {
-                  const currentStream = getCurrentStream();
-                  const currentType = isDualLens
-                    ? (currentStream?.streamType || device.type)
-                    : device.type;
-                  const isSelected = currentType === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      onClick={() => {
-                        if (isDualLens) {
-                          updateStreamProperty(activeStreamTab, 'streamType', opt.value);
-                        } else {
-                          updateDevice(device.id, { type: opt.value });
-                        }
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: '6px 10px',
-                        border: isSelected ? '2px solid #3b82f6' : '1px solid #3f3f46',
-                        background: isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                        borderRadius: 4,
-                        cursor: 'pointer',
-                        color: isSelected ? '#3b82f6' : '#a1a1aa',
-                        fontWeight: isSelected ? 600 : 400,
-                        fontSize: 11
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
+        {/* ================================================================ */}
+        {/* ======================== GENERAL TAB ========================== */}
+        {/* ================================================================ */}
+        {activeInspectorTab === 'general' && (
+          <>
+            {/* Sign Type Selector (signs only) */}
+            {isSign && (
+              <div className="inspector-section-compact">
+                <label className="section-title-small">Sign Type</label>
+                <select
+                  className="sign-type-select"
+                  value={device.type}
+                  onChange={(e) => {
+                    const newType = e.target.value;
+                    const updates = {
+                      type: newType,
+                      previewUrl: newType === 'sign-designable' ? (device.previewUrl || '') : undefined,
+                      displayMapping: newType === 'sign-static' ? (device.displayMapping || [selectedLevelId]) : undefined,
+                      displayStatus: newType === 'sign-static' ? (device.displayStatus || 'OPEN') : undefined
+                    };
+                    updateDevice(device.id, updates);
+                  }}
+                >
+                  <option value="sign-led">LED Sign</option>
+                  <option value="sign-static">Static Sign</option>
+                  <option value="sign-designable">Designable Sign</option>
+                </select>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* IP/Port - Stream-aware for dual-lens cameras */}
-          {!isSensor && (
-            (() => {
-              const currentStream = getCurrentStream();
-              const ipValue = isDualLens
-                ? (currentStream?.ipAddress || '')
-                : (device.ipAddress || device.stream1?.ipAddress || '');
-              const portValue = isDualLens
-                ? (currentStream?.port || '')
-                : (device.port || device.stream1?.port || '');
+            {/* Basic Identity */}
+            <div className="inspector-section-compact">
+              <div className="compact-row">
+                <label>Name</label>
+                <input
+                  type="text"
+                  value={device.name || ''}
+                  onChange={(e) => updateDevice(device.id, { name: e.target.value })}
+                />
+              </div>
 
-              return (
-                <div className="compact-row-inline">
-                  <div className="inline-field ip-field">
-                    <label>IP</label>
-                    <input
-                      type="text"
-                      value={ipValue}
-                      placeholder="10.16.6.45"
-                      onChange={(e) => {
-                        if (isDualLens) {
-                          updateStreamProperty(activeStreamTab, 'ipAddress', e.target.value);
-                        } else {
-                          updateDevice(device.id, {
-                            ipAddress: e.target.value,
-                            stream1: { ...device.stream1, ipAddress: e.target.value }
-                          });
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="inline-field port-field">
-                    <label>Port</label>
-                    <input
-                      type="text"
-                      value={portValue}
-                      placeholder={isStaticSign ? '10001' : '80'}
-                      onChange={(e) => {
-                        if (isDualLens) {
-                          updateStreamProperty(activeStreamTab, 'port', e.target.value);
-                        } else {
-                          updateDevice(device.id, {
-                            port: e.target.value,
-                            stream1: { ...device.stream1, port: e.target.value }
-                          });
-                        }
-                      }}
-                    />
+              {/* MAC Address for Cameras and Signs */}
+              {(isCamera || isSign) && (
+                <div className="compact-row">
+                  <label>MAC Address</label>
+                  <input
+                    type="text"
+                    value={device.macAddress || ''}
+                    placeholder="00:1A:2B:3C:4D:5E"
+                    onChange={(e) => updateDevice(device.id, { macAddress: e.target.value })}
+                  />
+                </div>
+              )}
+
+              {/* Stream Type Selector for Cameras */}
+              {isCamera && (
+                <div className="compact-row" style={{ marginBottom: 8 }}>
+                  <label>Stream Type {isDualLens ? `(Stream ${activeStreamTab})` : ''}</label>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {streamTypeOptions.map(opt => {
+                      const currentStream = getCurrentStream();
+                      const currentType = isDualLens
+                        ? (currentStream?.streamType || device.type)
+                        : device.type;
+                      const isSelected = currentType === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => {
+                            if (isDualLens) {
+                              updateStreamProperty(activeStreamTab, 'streamType', opt.value);
+                            } else {
+                              updateDevice(device.id, { type: opt.value });
+                            }
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '6px 10px',
+                            border: isSelected ? '2px solid #3b82f6' : '1px solid #3f3f46',
+                            background: isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                            borderRadius: 4,
+                            cursor: 'pointer',
+                            color: isSelected ? '#3b82f6' : '#a1a1aa',
+                            fontWeight: isSelected ? 600 : 400,
+                            fontSize: 11
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-              );
-            })()
-          )}
-          {isCamera && (
-            <div className="compact-row">
-              <label>Rotation</label>
-              <div className="rotation-compact">
-                <input
-                  type="number"
-                  value={device.rotation || 0}
-                  onChange={(e) => updateDevice(device.id, { rotation: parseFloat(e.target.value) || 0 })}
-                  min="0"
-                  max="360"
-                />
-                <span>°</span>
-              </div>
+              )}
+
+              {/* IP/Port - Stream-aware for dual-lens cameras */}
+              {!isSensor && (
+                (() => {
+                  const currentStream = getCurrentStream();
+                  const ipValue = isDualLens
+                    ? (currentStream?.ipAddress || '')
+                    : (device.ipAddress || device.stream1?.ipAddress || '');
+                  const portValue = isDualLens
+                    ? (currentStream?.port || '')
+                    : (device.port || device.stream1?.port || '');
+
+                  return (
+                    <div className="compact-row-inline">
+                      <div className="inline-field ip-field">
+                        <label>IP {isDualLens ? `(S${activeStreamTab})` : ''}</label>
+                        <input
+                          type="text"
+                          value={ipValue}
+                          placeholder="10.16.6.45"
+                          onChange={(e) => {
+                            if (isDualLens) {
+                              updateStreamProperty(activeStreamTab, 'ipAddress', e.target.value);
+                            } else {
+                              updateDevice(device.id, {
+                                ipAddress: e.target.value,
+                                stream1: { ...device.stream1, ipAddress: e.target.value }
+                              });
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="inline-field port-field">
+                        <label>Port</label>
+                        <input
+                          type="text"
+                          value={portValue}
+                          placeholder={isStaticSign ? '10001' : '80'}
+                          onChange={(e) => {
+                            if (isDualLens) {
+                              updateStreamProperty(activeStreamTab, 'port', e.target.value);
+                            } else {
+                              updateDevice(device.id, {
+                                port: e.target.value,
+                                stream1: { ...device.stream1, port: e.target.value }
+                              });
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
             </div>
-          )}
-        </div>
 
-        {/* ===== EXTERNAL URL (for cameras and signs) ===== */}
-        {(isCamera || isSign) && (
-          (() => {
-            const currentStream = getCurrentStream();
-            const urlValue = (isCamera && isDualLens)
-              ? (currentStream?.externalUrl || '')
-              : (device.externalUrl || '');
-
-            return (
+            {/* Sensor Configuration (sensors only - in General tab) */}
+            {isSpaceMonitor && (
               <div className="inspector-section-compact">
-                <label className="section-title-small">External URL {isCamera && isDualLens ? `(Stream ${activeStreamTab})` : ''}</label>
+                <label className="section-title-small">Sensor Configuration</label>
+
+                {/* Sensor Group Selection */}
+                <div className="compact-row">
+                  <label>Sensor Group</label>
+                  <select
+                    value={device.sensorGroup || device.type || ''}
+                    onChange={(e) => updateDevice(device.id, { sensorGroup: e.target.value, type: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      background: '#27272a',
+                      border: '1px solid #3f3f46',
+                      borderRadius: 6,
+                      color: '#fafafa',
+                      fontSize: 13
+                    }}
+                  >
+                    <option value="sensor-nwave">NWAVE</option>
+                    <option value="sensor-parksol">Parksol</option>
+                    <option value="sensor-proco">Proco</option>
+                    <option value="sensor-ensight">Ensight Vision</option>
+                  </select>
+                </div>
+
+                <div className="compact-row">
+                  <label>Sensor ID</label>
+                  <input
+                    type="text"
+                    value={device.sensorId || ''}
+                    placeholder="SENSOR-001"
+                    onChange={(e) => updateDevice(device.id, { sensorId: e.target.value })}
+                  />
+                </div>
+
+                <div className="compact-row">
+                  <label>Serial Address</label>
+                  <input
+                    type="text"
+                    value={device.serialAddress || ''}
+                    placeholder="SN-001234"
+                    onChange={(e) => updateDevice(device.id, { serialAddress: e.target.value })}
+                  />
+                </div>
+
+                {/* NWAVE-specific fields */}
+                {isNwave && (
+                  <>
+                    <div className="compact-row">
+                      <label>URL (IP Address)</label>
+                      <input
+                        type="text"
+                        value={device.ipAddress || ''}
+                        placeholder="https://api.nwave.io/..."
+                        onChange={(e) => updateDevice(device.id, { ipAddress: e.target.value })}
+                      />
+                    </div>
+                    <div className="compact-row">
+                      <label>API Key (Controller Key)</label>
+                      <input
+                        type="text"
+                        value={device.controllerKey || ''}
+                        placeholder="Enter API Key"
+                        onChange={(e) => updateDevice(device.id, { controllerKey: e.target.value })}
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="compact-row">
+                  <label>Temp Parking Time (Minutes)</label>
+                  <input
+                    type="number"
+                    value={device.tempParkingTimeMinutes || ''}
+                    placeholder="30"
+                    onChange={(e) => updateDevice(device.id, { tempParkingTimeMinutes: e.target.value })}
+                  />
+                </div>
+
+                <div className="compact-row">
+                  <label>Parking Type</label>
+                  <div className="parking-type-buttons">
+                    <button
+                      className={`parking-type-btn ${device.parkingType === 'normal' || device.parkingType === 'regular' ? 'active' : ''}`}
+                      onClick={() => updateDevice(device.id, { parkingType: 'normal' })}
+                    >
+                      Normal
+                    </button>
+                    <button
+                      className={`parking-type-btn ev ${device.parkingType === 'ev' ? 'active' : ''}`}
+                      onClick={() => updateDevice(device.id, { parkingType: 'ev' })}
+                    >
+                      EV
+                    </button>
+                    <button
+                      className={`parking-type-btn ada ${device.parkingType === 'ada' ? 'active' : ''}`}
+                      onClick={() => updateDevice(device.id, { parkingType: 'ada' })}
+                    >
+                      ADA
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ================================================================ */}
+        {/* ======================== VISUAL TAB (cameras) ================= */}
+        {/* ================================================================ */}
+        {activeInspectorTab === 'visual' && isCamera && (
+          <>
+            {/* Appearance Controls */}
+            <div className="inspector-section-compact">
+              <label className="section-title-small">
+                Appearance {isDualLens ? `· Stream ${activeStreamTab}` : ''}
+              </label>
+              {(() => {
+                const currentStream = getCurrentStream();
+                const rotValue = isDualLens
+                  ? (currentStream?.rotation ?? 0)
+                  : (device.rotation || 0);
+                const colorValue = isDualLens
+                  ? (currentStream?.color || '#3b82f6')
+                  : (device.color || '#3b82f6');
+                const coneSizeValue = isDualLens
+                  ? (currentStream?.coneSize ?? 40)
+                  : (device.coneSize ?? 40);
+
+                return (
+                  <>
+                    <div className="compact-row">
+                      <label>Rotation</label>
+                      <div className="rotation-compact">
+                        <input
+                          type="number"
+                          value={rotValue}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            if (isDualLens) {
+                              updateStreamProperty(activeStreamTab, 'rotation', val);
+                            } else {
+                              updateDevice(device.id, { rotation: val });
+                            }
+                          }}
+                          min="0"
+                          max="360"
+                        />
+                        <span>°</span>
+                      </div>
+                    </div>
+                    <div className="compact-row">
+                      <label>Color</label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input
+                          type="color"
+                          value={colorValue}
+                          onChange={(e) => {
+                            if (isDualLens) {
+                              updateStreamProperty(activeStreamTab, 'color', e.target.value);
+                            } else {
+                              updateDevice(device.id, { color: e.target.value });
+                            }
+                          }}
+                          style={{ width: 32, height: 28, padding: 0, border: '1px solid #3f3f46', borderRadius: 4, background: 'transparent', cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: 11, color: '#a1a1aa' }}>{colorValue}</span>
+                      </div>
+                    </div>
+                    <div className="compact-row">
+                      <label>Direction Size</label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input
+                          type="range"
+                          min="20"
+                          max="120"
+                          value={coneSizeValue}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            if (isDualLens) {
+                              updateStreamProperty(activeStreamTab, 'coneSize', val);
+                            } else {
+                              updateDevice(device.id, { coneSize: val });
+                            }
+                          }}
+                          style={{ flex: 1, accentColor: '#3b82f6' }}
+                        />
+                        <span style={{ fontSize: 11, color: '#a1a1aa', minWidth: 30 }}>{coneSizeValue}px</span>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* Camera View Image */}
+            <div className="inspector-section-compact">
+              <label className="section-title-small">Camera View</label>
+              {device.viewImage ? (
+                <div className="camera-view-thumb" onClick={() => setShowImageModal(true)}>
+                  <img src={device.viewImage} alt="Camera view" />
+                  <div className="camera-view-overlay">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                    </svg>
+                    Click to expand
+                  </div>
+                  <button 
+                    className="remove-image-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateDevice(device.id, { viewImage: null });
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <button className="upload-view-btn" onClick={() => fileInputRef.current?.click()}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <path d="M21 15l-5-5L5 21"/>
+                  </svg>
+                  Add camera view image
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ================================================================ */}
+        {/* ======================== DISPLAY TAB (signs) ================== */}
+        {/* ================================================================ */}
+        {activeInspectorTab === 'display' && isSign && (
+          <>
+            {/* Designable Sign - Preview */}
+            {isDesignableSign && (
+              <div className="inspector-section-compact">
+                <label className="section-title-small">Design / Content</label>
+                <div className="preview-url-row">
+                  <span className="url-label">Sign Preview URL</span>
+                  <a href={device.previewUrl || '#'} target="_blank" rel="noopener noreferrer" className="url-link">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                      <polyline points="15 3 21 3 21 9"/>
+                      <line x1="10" y1="14" x2="21" y2="3"/>
+                    </svg>
+                    LNK
+                  </a>
+                </div>
                 <div className="url-input-row">
                   <input
                     type="text"
-                    value={urlValue}
-                    placeholder="https://device-admin.local/..."
-                    onChange={(e) => {
-                      if (isCamera && isDualLens) {
-                        updateStreamProperty(activeStreamTab, 'externalUrl', e.target.value);
-                      } else {
-                        updateDevice(device.id, { externalUrl: e.target.value });
-                      }
-                    }}
+                    value={device.previewUrl || ''}
+                    placeholder="https://SIGN-12.preview..."
+                    onChange={(e) => updateDevice(device.id, { previewUrl: e.target.value })}
                   />
-                  <button
+                  <button 
                     className="copy-url-btn"
-                    onClick={() => navigator.clipboard.writeText(urlValue)}
+                    onClick={() => navigator.clipboard.writeText(device.previewUrl || '')}
                     title="Copy URL"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -490,435 +764,108 @@ const InspectorPanel = () => {
                     </svg>
                   </button>
                 </div>
-                {urlValue && (
-                  <a
-                    href={urlValue.match(/^https?:\/\//) ? urlValue : `https://${urlValue}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="open-url-btn"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                      <polyline points="15 3 21 3 21 9"/>
-                      <line x1="10" y1="14" x2="21" y2="3"/>
-                    </svg>
-                    Open in Browser
-                  </a>
+                
+                {/* Live Preview */}
+                {device.previewUrl && (
+                  <div className="sign-preview-container">
+                    <iframe 
+                      src={device.previewUrl}
+                      title="Sign Preview"
+                      className="sign-preview-iframe"
+                    />
+                  </div>
                 )}
-              </div>
-            );
-          })()
-        )}
-
-        {/* ===== SERVER ASSIGNMENT (cameras) ===== */}
-        {isCamera && (
-          <div className="inspector-section-compact">
-            <label className="section-title-small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-                <line x1="6" y1="6" x2="6.01" y2="6" />
-                <line x1="6" y1="18" x2="6.01" y2="18" />
-              </svg>
-              Server
-            </label>
-            <select
-              className="sign-type-select"
-              value={device.serverId || ''}
-              onChange={(e) => updateDevice(device.id, { serverId: e.target.value ? Number(e.target.value) : '' })}
-            >
-              <option value="">No server assigned</option>
-              {(garage?.servers || []).map(s => (
-                <option key={s.id} value={s.id}>{s.name} ({s.serverType})</option>
-              ))}
-            </select>
-            {device.serverId && (() => {
-              const srv = (garage?.servers || []).find(s => s.id === device.serverId);
-              return srv ? (
-                <div style={{
-                  marginTop: 6,
-                  padding: '6px 10px',
-                  background: 'rgba(59, 130, 246, 0.08)',
-                  border: '1px solid rgba(59, 130, 246, 0.2)',
-                  borderRadius: 6,
-                  fontSize: 11,
-                  color: '#93c5fd'
-                }}>
-                  <div style={{ fontWeight: 600 }}>{srv.name}</div>
-                  <div style={{ opacity: 0.8, marginTop: 2 }}>{srv.ipAddress} &middot; {srv.os}</div>
-                </div>
-              ) : null;
-            })()}
-          </div>
-        )}
-
-        {/* ===== CAMERA VIEW IMAGE ===== */}
-        {isCamera && (
-          <div className="inspector-section-compact">
-            <label className="section-title-small">Camera View</label>
-            {device.viewImage ? (
-              <div className="camera-view-thumb" onClick={() => setShowImageModal(true)}>
-                <img src={device.viewImage} alt="Camera view" />
-                <div className="camera-view-overlay">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
-                  </svg>
-                  Click to expand
-                </div>
+                {!device.previewUrl && (
+                  <div className="sign-preview-placeholder">
+                    <div className="preview-mock">
+                      <div className="preview-mock-header">AVAILABLE</div>
+                      <div className="preview-mock-number">248</div>
+                      <div className="preview-mock-levels">
+                        <div className="preview-mock-level">Level 1<br/><span>124</span></div>
+                        <div className="preview-mock-level">Level 2<br/><span>124</span></div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 <button 
-                  className="remove-image-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    updateDevice(device.id, { viewImage: null });
-                  }}
+                  className="fullscreen-btn"
+                  onClick={() => setShowPreviewFullscreen(true)}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M18 6L6 18M6 6l12 12"/>
-                  </svg>
+                  View Fullscreen ▾
                 </button>
               </div>
-            ) : (
-              <button className="upload-view-btn" onClick={() => fileInputRef.current?.click()}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                  <circle cx="8.5" cy="8.5" r="1.5"/>
-                  <path d="M21 15l-5-5L5 21"/>
-                </svg>
-                Add camera view image
-              </button>
             )}
-          </div>
-        )}
 
-        {/* Hidden file input for image uploads (cameras and sensors) */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          style={{ display: 'none' }}
-          onChange={handleImageUpload}
-        />
-
-        {/* ===== DESIGNABLE SIGN - PREVIEW ===== */}
-        {isDesignableSign && (
-          <div className="inspector-section-compact">
-            <label className="section-title-small">Design / Content</label>
-            <div className="preview-url-row">
-              <span className="url-label">Sign Preview URL</span>
-              <a href={device.previewUrl || '#'} target="_blank" rel="noopener noreferrer" className="url-link">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                  <polyline points="15 3 21 3 21 9"/>
-                  <line x1="10" y1="14" x2="21" y2="3"/>
-                </svg>
-                LNK
-              </a>
-            </div>
-            <div className="url-input-row">
-              <input
-                type="text"
-                value={device.previewUrl || ''}
-                placeholder="https://SIGN-12.preview..."
-                onChange={(e) => updateDevice(device.id, { previewUrl: e.target.value })}
-              />
-              <button 
-                className="copy-url-btn"
-                onClick={() => navigator.clipboard.writeText(device.previewUrl || '')}
-                title="Copy URL"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                </svg>
-              </button>
-            </div>
-            
-            {/* Live Preview */}
-            {device.previewUrl && (
-              <div className="sign-preview-container">
-                <iframe 
-                  src={device.previewUrl}
-                  title="Sign Preview"
-                  className="sign-preview-iframe"
-                />
-              </div>
-            )}
-            {!device.previewUrl && (
-              <div className="sign-preview-placeholder">
-                <div className="preview-mock">
-                  <div className="preview-mock-header">AVAILABLE</div>
-                  <div className="preview-mock-number">248</div>
-                  <div className="preview-mock-levels">
-                    <div className="preview-mock-level">Level 1<br/><span>124</span></div>
-                    <div className="preview-mock-level">Level 2<br/><span>124</span></div>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            <button 
-              className="fullscreen-btn"
-              onClick={() => setShowPreviewFullscreen(true)}
-            >
-              View Fullscreen ▾
-            </button>
-          </div>
-        )}
-
-        {/* ===== STATIC SIGN - DISPLAY STATUS ===== */}
-        {isStaticSign && (
-          <>
-            <div className="inspector-section-compact">
-              <label className="section-title-small">Static Display Status</label>
-              <div className={`static-display-status ${(device.displayStatus || 'OPEN').toLowerCase()}`}>
-                {device.displayStatus || 'OPEN'}
-              </div>
-            </div>
-
-            <div className="inspector-section-compact">
-              <label className="section-title-small">Display Mapping</label>
-              <div className="display-mapping-list">
-                {allLevels.map(lvl => (
-                  <label key={lvl.id} className="mapping-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={(device.displayMapping || []).includes(lvl.id)}
-                      onChange={() => toggleDisplayMapping(lvl.id)}
-                    />
-                    <span className="checkbox-mark"></span>
-                    <span className="checkbox-label">{lvl.name}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* ===== OVERRIDE STATE (for all signs) ===== */}
-        {isSign && (
-          <div className="inspector-section-compact">
-            <label className="section-title-small">Override State</label>
-            <div className="override-buttons">
-              <button 
-                className={`override-btn open ${device.overrideState === 'open' ? 'active' : ''}`}
-                onClick={() => sendOverrideCommand('open')}
-              >
-                OPEN
-              </button>
-              <button 
-                className={`override-btn full ${device.overrideState === 'full' ? 'active' : ''}`}
-                onClick={() => sendOverrideCommand('full')}
-              >
-                FULL
-              </button>
-              <button 
-                className={`override-btn clsd ${device.overrideState === 'clsd' || device.overrideState === 'auto' ? 'active' : ''}`}
-                onClick={() => sendOverrideCommand('auto')}
-              >
-                <span>CLSD</span>
-                <span className="override-sub">Clear (AUTO)</span>
-              </button>
-            </div>
-            {overrideMessage && (
-              <div className="override-message">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-                Override command sent: {overrideMessage.state} @ {overrideMessage.time} | Delivered cleanly
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ===== TRAFFIC FLOW (cameras only) ===== */}
-        {isCamera && (
-          (() => {
-            const currentStream = getCurrentStream();
-            const directionValue = isDualLens
-              ? (currentStream?.direction || 'in')
-              : (device.direction || 'in');
-            const flowDestValue = isDualLens
-              ? (currentStream?.flowDestination || (directionValue === 'in' ? 'garage-entry' : 'garage-exit'))
-              : (device.flowDestination || (directionValue === 'in' ? 'garage-entry' : 'garage-exit'));
-
-            return (
-              <div className="inspector-section-compact">
-                <label className="section-title-small">Traffic Flow {isDualLens ? `(Stream ${activeStreamTab})` : ''}</label>
-                <p className="flow-help-text">
-                  This {isDualLens ? 'stream' : 'camera'} detects cars {directionValue === 'in' ? 'entering' : 'leaving'} {currentLevel.name}
-                </p>
-
-                <div className="flow-config-simple">
-                  <div className="flow-direction-row">
-                    <button
-                      className={`flow-dir-btn ${directionValue === 'in' ? 'active in' : ''}`}
-                      onClick={() => {
-                        if (isDualLens) {
-                          updateStreamProperty(activeStreamTab, 'direction', 'in');
-                          updateStreamProperty(activeStreamTab, 'flowDestination', 'garage-entry');
-                        } else {
-                          updateDevice(device.id, { direction: 'in', flowDestination: 'garage-entry' });
-                        }
-                      }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M5 12h14M12 5l7 7-7 7"/>
-                      </svg>
-                      IN
-                    </button>
-                    <button
-                      className={`flow-dir-btn ${directionValue === 'out' ? 'active out' : ''}`}
-                      onClick={() => {
-                        if (isDualLens) {
-                          updateStreamProperty(activeStreamTab, 'direction', 'out');
-                          updateStreamProperty(activeStreamTab, 'flowDestination', 'garage-exit');
-                        } else {
-                          updateDevice(device.id, { direction: 'out', flowDestination: 'garage-exit' });
-                        }
-                      }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M19 12H5M12 19l-7-7 7-7"/>
-                      </svg>
-                      OUT
-                    </button>
-                  </div>
-
-                  <div className="flow-destination">
-                    <span className="flow-label">
-                      {directionValue === 'in' ? 'Coming from:' : 'Going to:'}
-                    </span>
-                    <select
-                      value={flowDestValue}
-                      onChange={(e) => {
-                        if (isDualLens) {
-                          updateStreamProperty(activeStreamTab, 'flowDestination', e.target.value);
-                        } else {
-                          updateDevice(device.id, { flowDestination: e.target.value });
-                        }
-                      }}
-                    >
-                      {getFlowOptions().map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            );
-          })()
-        )}
-
-        {/* ===== SPACE MONITOR CONFIGURATION ===== */}
-        {isSpaceMonitor && (
-          <div className="inspector-section-compact">
-            <label className="section-title-small">Space Monitor Configuration</label>
-
-            {/* Sensor Group Selection */}
-            <div className="compact-row">
-              <label>Sensor Group</label>
-              <select
-                value={device.sensorGroup || device.type || ''}
-                onChange={(e) => updateDevice(device.id, { sensorGroup: e.target.value, type: e.target.value })}
-                style={{
-                  width: '100%',
-                  padding: '8px 10px',
-                  background: '#27272a',
-                  border: '1px solid #3f3f46',
-                  borderRadius: 6,
-                  color: '#fafafa',
-                  fontSize: 13
-                }}
-              >
-                <option value="sensor-nwave">NWAVE</option>
-                <option value="sensor-parksol">Parksol</option>
-                <option value="sensor-proco">Proco</option>
-                <option value="sensor-ensight">Ensight Vision</option>
-              </select>
-            </div>
-
-            <div className="compact-row">
-              <label>Sensor ID</label>
-              <input
-                type="text"
-                value={device.sensorId || ''}
-                placeholder="SENSOR-001"
-                onChange={(e) => updateDevice(device.id, { sensorId: e.target.value })}
-              />
-            </div>
-
-            <div className="compact-row">
-              <label>Serial Address</label>
-              <input
-                type="text"
-                value={device.serialAddress || ''}
-                placeholder="SN-001234"
-                onChange={(e) => updateDevice(device.id, { serialAddress: e.target.value })}
-              />
-            </div>
-
-            {/* NWAVE-specific fields */}
-            {isNwave && (
+            {/* Static Sign - Display Status */}
+            {isStaticSign && (
               <>
-                <div className="compact-row">
-                  <label>URL (IP Address)</label>
-                  <input
-                    type="text"
-                    value={device.ipAddress || ''}
-                    placeholder="https://api.nwave.io/..."
-                    onChange={(e) => updateDevice(device.id, { ipAddress: e.target.value })}
-                  />
+                <div className="inspector-section-compact">
+                  <label className="section-title-small">Static Display Status</label>
+                  <div className={`static-display-status ${(device.displayStatus || 'OPEN').toLowerCase()}`}>
+                    {device.displayStatus || 'OPEN'}
+                  </div>
                 </div>
-                <div className="compact-row">
-                  <label>API Key (Controller Key)</label>
-                  <input
-                    type="text"
-                    value={device.controllerKey || ''}
-                    placeholder="Enter API Key"
-                    onChange={(e) => updateDevice(device.id, { controllerKey: e.target.value })}
-                  />
+
+                <div className="inspector-section-compact">
+                  <label className="section-title-small">Display Mapping</label>
+                  <div className="display-mapping-list">
+                    {allLevels.map(lvl => (
+                      <label key={lvl.id} className="mapping-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={(device.displayMapping || []).includes(lvl.id)}
+                          onChange={() => toggleDisplayMapping(lvl.id)}
+                        />
+                        <span className="checkbox-mark"></span>
+                        <span className="checkbox-label">{lvl.name}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </>
             )}
 
-            <div className="compact-row">
-              <label>Temp Parking Time (Minutes)</label>
-              <input
-                type="number"
-                value={device.tempParkingTimeMinutes || ''}
-                placeholder="30"
-                onChange={(e) => updateDevice(device.id, { tempParkingTimeMinutes: e.target.value })}
-              />
-            </div>
-
-            <div className="compact-row">
-              <label>Parking Type</label>
-              <div className="parking-type-buttons">
-                <button
-                  className={`parking-type-btn ${device.parkingType === 'normal' || device.parkingType === 'regular' ? 'active' : ''}`}
-                  onClick={() => updateDevice(device.id, { parkingType: 'normal' })}
+            {/* Override State (all signs) */}
+            <div className="inspector-section-compact">
+              <label className="section-title-small">Override State</label>
+              <div className="override-buttons">
+                <button 
+                  className={`override-btn open ${device.overrideState === 'open' ? 'active' : ''}`}
+                  onClick={() => sendOverrideCommand('open')}
                 >
-                  Normal
+                  OPEN
                 </button>
-                <button
-                  className={`parking-type-btn ev ${device.parkingType === 'ev' ? 'active' : ''}`}
-                  onClick={() => updateDevice(device.id, { parkingType: 'ev' })}
+                <button 
+                  className={`override-btn full ${device.overrideState === 'full' ? 'active' : ''}`}
+                  onClick={() => sendOverrideCommand('full')}
                 >
-                  EV
+                  FULL
                 </button>
-                <button
-                  className={`parking-type-btn ada ${device.parkingType === 'ada' ? 'active' : ''}`}
-                  onClick={() => updateDevice(device.id, { parkingType: 'ada' })}
+                <button 
+                  className={`override-btn clsd ${device.overrideState === 'clsd' || device.overrideState === 'auto' ? 'active' : ''}`}
+                  onClick={() => sendOverrideCommand('auto')}
                 >
-                  ADA
+                  <span>CLSD</span>
+                  <span className="override-sub">Clear (AUTO)</span>
                 </button>
               </div>
+              {overrideMessage && (
+                <div className="override-message">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  Override command sent: {overrideMessage.state} @ {overrideMessage.time} | Delivered cleanly
+                </div>
+              )}
             </div>
-          </div>
+          </>
         )}
 
-        {/* ===== SPACE MONITOR LOCATION IMAGE ===== */}
-        {isSpaceMonitor && (
+        {/* ================================================================ */}
+        {/* ======================== MEDIA TAB (sensors) ================== */}
+        {/* ================================================================ */}
+        {activeInspectorTab === 'media' && isSpaceMonitor && (
           <div className="inspector-section-compact">
             <label className="section-title-small">Location Photo</label>
             {device.sensorImage ? (
@@ -955,61 +902,261 @@ const InspectorPanel = () => {
           </div>
         )}
 
-        {/* Config Files Section */}
-        <div className="inspector-section-compact">
-          <label className="section-title-small">Config Files</label>
-          <div className="config-paths-list" style={{ fontSize: 10, color: '#71717a', fontFamily: 'monospace', marginBottom: 8 }}>
-            {getConfigFilePaths(device).map((path, idx) => (
-              <div key={idx} style={{ marginBottom: 2, wordBreak: 'break-all' }}>{path}</div>
-            ))}
-          </div>
-          <button
-            className="export-config-btn"
-            onClick={exportDeviceConfigFiles}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              width: '100%',
-              padding: '8px 12px',
-              background: 'rgba(34, 197, 94, 0.1)',
-              border: '1px solid rgba(34, 197, 94, 0.3)',
-              borderRadius: 6,
-              color: '#22c55e',
-              fontSize: 12,
-              fontWeight: 500,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            Export Config Files
-          </button>
-          {configExportMessage && (
-            <div style={{
-              marginTop: 8,
-              padding: '6px 10px',
-              background: 'rgba(34, 197, 94, 0.15)',
-              borderRadius: 4,
-              fontSize: 11,
-              color: '#22c55e',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6
-            }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M20 6L9 17l-5-5" />
-              </svg>
-              {configExportMessage}
+        {/* ================================================================ */}
+        {/* ======================== NETWORK TAB ========================== */}
+        {/* ================================================================ */}
+        {activeInspectorTab === 'network' && (
+          <>
+            {/* External URL (cameras and signs) */}
+            {(isCamera || isSign) && (
+              (() => {
+                const currentStream = getCurrentStream();
+                const urlValue = (isCamera && isDualLens)
+                  ? (currentStream?.externalUrl || '')
+                  : (device.externalUrl || '');
+
+                return (
+                  <div className="inspector-section-compact">
+                    <label className="section-title-small">
+                      External URL {isCamera && isDualLens ? `· Stream ${activeStreamTab}` : ''}
+                    </label>
+                    <div className="url-input-row">
+                      <input
+                        type="text"
+                        value={urlValue}
+                        placeholder="https://device-admin.local/..."
+                        onChange={(e) => {
+                          if (isCamera && isDualLens) {
+                            updateStreamProperty(activeStreamTab, 'externalUrl', e.target.value);
+                          } else {
+                            updateDevice(device.id, { externalUrl: e.target.value });
+                          }
+                        }}
+                      />
+                      <button
+                        className="copy-url-btn"
+                        onClick={() => navigator.clipboard.writeText(urlValue)}
+                        title="Copy URL"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                      </button>
+                    </div>
+                    {urlValue && (
+                      <a
+                        href={urlValue.match(/^https?:\/\//) ? urlValue : `https://${urlValue}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="open-url-btn"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                          <polyline points="15 3 21 3 21 9"/>
+                          <line x1="10" y1="14" x2="21" y2="3"/>
+                        </svg>
+                        Open in Browser
+                      </a>
+                    )}
+                  </div>
+                );
+              })()
+            )}
+
+            {/* Server Assignment (cameras and signs) */}
+            {(isCamera || isSign) && (
+              <div className="inspector-section-compact">
+                <label className="section-title-small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                    <line x1="6" y1="6" x2="6.01" y2="6" />
+                    <line x1="6" y1="18" x2="6.01" y2="18" />
+                  </svg>
+                  Server
+                </label>
+                <select
+                  className="sign-type-select"
+                  value={device.serverId || ''}
+                  onChange={(e) => updateDevice(device.id, { serverId: e.target.value ? Number(e.target.value) : '' })}
+                >
+                  <option value="">No server assigned</option>
+                  {(garage?.servers || []).map(s => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.serverType})</option>
+                  ))}
+                </select>
+                {device.serverId && (() => {
+                  const srv = (garage?.servers || []).find(s => s.id === device.serverId);
+                  return srv ? (
+                    <div style={{
+                      marginTop: 6,
+                      padding: '6px 10px',
+                      background: 'rgba(59, 130, 246, 0.08)',
+                      border: '1px solid rgba(59, 130, 246, 0.2)',
+                      borderRadius: 6,
+                      fontSize: 11,
+                      color: '#93c5fd'
+                    }}>
+                      <div style={{ fontWeight: 600 }}>{srv.name}</div>
+                      <div style={{ opacity: 0.8, marginTop: 2 }}>{srv.ipAddress} &middot; {srv.os}</div>
+                    </div>
+                  ) : null;
+                })()}
+              </div>
+            )}
+
+            {/* Traffic Flow (cameras only) */}
+            {isCamera && (
+              (() => {
+                const currentStream = getCurrentStream();
+                const directionValue = isDualLens
+                  ? (currentStream?.direction || 'in')
+                  : (device.direction || 'in');
+                const flowDestValue = isDualLens
+                  ? (currentStream?.flowDestination || (directionValue === 'in' ? 'garage-entry' : 'garage-exit'))
+                  : (device.flowDestination || (directionValue === 'in' ? 'garage-entry' : 'garage-exit'));
+
+                return (
+                  <div className="inspector-section-compact">
+                    <label className="section-title-small">
+                      Traffic Flow {isDualLens ? `· Stream ${activeStreamTab}` : ''}
+                    </label>
+                    <p className="flow-help-text">
+                      This {isDualLens ? 'stream' : 'camera'} detects cars {directionValue === 'in' ? 'entering' : 'leaving'} {currentLevel.name}
+                    </p>
+
+                    <div className="flow-config-simple">
+                      <div className="flow-direction-row">
+                        <button
+                          className={`flow-dir-btn ${directionValue === 'in' ? 'active in' : ''}`}
+                          onClick={() => {
+                            if (isDualLens) {
+                              updateStreamProperty(activeStreamTab, 'direction', 'in');
+                              updateStreamProperty(activeStreamTab, 'flowDestination', 'garage-entry');
+                            } else {
+                              updateDevice(device.id, { direction: 'in', flowDestination: 'garage-entry' });
+                            }
+                          }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M5 12h14M12 5l7 7-7 7"/>
+                          </svg>
+                          IN
+                        </button>
+                        <button
+                          className={`flow-dir-btn ${directionValue === 'out' ? 'active out' : ''}`}
+                          onClick={() => {
+                            if (isDualLens) {
+                              updateStreamProperty(activeStreamTab, 'direction', 'out');
+                              updateStreamProperty(activeStreamTab, 'flowDestination', 'garage-exit');
+                            } else {
+                              updateDevice(device.id, { direction: 'out', flowDestination: 'garage-exit' });
+                            }
+                          }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M19 12H5M12 19l-7-7 7-7"/>
+                          </svg>
+                          OUT
+                        </button>
+                      </div>
+
+                      <div className="flow-destination">
+                        <span className="flow-label">
+                          {directionValue === 'in' ? 'Coming from:' : 'Going to:'}
+                        </span>
+                        <select
+                          value={flowDestValue}
+                          onChange={(e) => {
+                            if (isDualLens) {
+                              updateStreamProperty(activeStreamTab, 'flowDestination', e.target.value);
+                            } else {
+                              updateDevice(device.id, { flowDestination: e.target.value });
+                            }
+                          }}
+                        >
+                          {getFlowOptions().map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()
+            )}
+          </>
+        )}
+
+        {/* ================================================================ */}
+        {/* ======================== EXPORT TAB =========================== */}
+        {/* ================================================================ */}
+        {activeInspectorTab === 'export' && (
+          <div className="inspector-section-compact">
+            <label className="section-title-small">Config Files</label>
+            <div className="config-paths-list" style={{ fontSize: 10, color: '#71717a', fontFamily: 'monospace', marginBottom: 8 }}>
+              {getConfigFilePaths(device).map((path, idx) => (
+                <div key={idx} style={{ marginBottom: 2, wordBreak: 'break-all' }}>{path}</div>
+              ))}
             </div>
-          )}
-        </div>
+            <button
+              className="export-config-btn"
+              onClick={exportDeviceConfigFiles}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                width: '100%',
+                padding: '8px 12px',
+                background: 'rgba(34, 197, 94, 0.1)',
+                border: '1px solid rgba(34, 197, 94, 0.3)',
+                borderRadius: 6,
+                color: '#22c55e',
+                fontSize: 12,
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Export Config Files
+            </button>
+            {configExportMessage && (
+              <div style={{
+                marginTop: 8,
+                padding: '6px 10px',
+                background: 'rgba(34, 197, 94, 0.15)',
+                borderRadius: 4,
+                fontSize: 11,
+                color: '#22c55e',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6
+              }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+                {configExportMessage}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Hidden file input for image uploads (cameras and sensors) */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleImageUpload}
+      />
 
       {/* Action buttons - fixed at bottom */}
       <div className="inspector-footer-compact" style={{ display: 'flex', gap: 8 }}>

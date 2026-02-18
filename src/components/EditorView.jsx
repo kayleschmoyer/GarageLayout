@@ -207,7 +207,7 @@ const EditorView = () => {
   }), [mode]);
 
   // Local state
-  const [activeTab, setActiveTab] = useState('cameras');
+  const [activeTab, setActiveTab] = useState('servers');
   const [mapFilter, setMapFilter] = useState([]); // [] = show all, or array of active filters: 'cameras', 'spaceMonitoring', 'signs'
   const [showAddForm, setShowAddForm] = useState(false);
   const [showLevelSettings, setShowLevelSettings] = useState(false);
@@ -217,13 +217,41 @@ const EditorView = () => {
   const [cameraFormStep, setCameraFormStep] = useState(1); // 1: hardware, 2: type, 3: config
   const [activeStreamTab, setActiveStreamTab] = useState(1); // For dual lens: 1 or 2
   const [collapsedSensorGroups, setCollapsedSensorGroups] = useState({}); // Track collapsed state per sensor group
+  const [selectedServerId, setSelectedServerId] = useState(null); // Track which server is expanded
+  const [serverFormTab, setServerFormTab] = useState('identity'); // 'identity' | 'networking' | 'splashtop'
+  const [newServer, setNewServer] = useState({
+    name: '',
+    ram: '',
+    ramCustom: '',
+    ssd: '',
+    ssdCustom: '',
+    os: '',
+    osCustom: '',
+    ethernetPortCount: 2,
+    ethernetPorts: [
+      { mac: '', ip: '', dhcp: false },
+      { mac: '', ip: '', dhcp: false }
+    ],
+    loginUsername: '',
+    loginPassword: '',
+    splashtopLink: '',
+  });
   const configFileInputRef = useRef(null);
 
-  // Server management state
-  const [showServerAddForm, setShowServerAddForm] = useState(false);
-  const [editingServer, setEditingServer] = useState(null);
-  const [newServer, setNewServer] = useState({ ...DEFAULT_NEW_SERVER });
-  const [showServerPasswords, setShowServerPasswords] = useState({});
+  // Helper to update a server property in the garage's servers array
+  const updateServerProp = (serverId, updates) => {
+    const updatedGarages = garages.map(g => {
+      if (g.id !== selectedGarageId) return g;
+      return {
+        ...g,
+        servers: safeArray(g.servers).map(s =>
+          s.id === serverId ? { ...s, ...updates } : s
+        )
+      };
+    });
+    setGarages(updatedGarages);
+  };
+
   const [newDevice, setNewDevice] = useState({
     type: '',
     hardwareType: '', // 'dual-lens' or 'bullet'
@@ -419,8 +447,9 @@ const EditorView = () => {
   const stats = useMemo(() => ({
     cameras: cameras.length,
     spaceMonitors: spaceMonitors.length,
-    signs: signs.length
-  }), [cameras, spaceMonitors, signs]);
+    signs: signs.length,
+    servers: garageServers.length
+  }), [cameras, spaceMonitors, signs, garageServers]);
 
   // Update local time based on garage location's timezone
   React.useEffect(() => {
@@ -838,173 +867,385 @@ const EditorView = () => {
   const exportLayoutPDF = useCallback(async () => {
     if (!garage) return;
 
-    const pdf = new jsPDF({
-      orientation: 'landscape',
-      unit: 'pt',
-      format: 'a4'
-    });
-
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-
-    // Get current date/time for PDF
-    const timezone = getTimezoneForState(garage.state);
-    const now = new Date();
-    const dateTimeString = now.toLocaleString('en-US', {
-      timeZone: timezone,
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
-
-    for (let levelIndex = 0; levelIndex < garage.levels.length; levelIndex++) {
-      const currentLevel = garage.levels[levelIndex];
-      if (levelIndex > 0) pdf.addPage();
-
-      // Background
-      pdf.setFillColor(18, 20, 28);
-      pdf.rect(0, 0, pageWidth, pageHeight, 'F');
-
-      // Header
-      const headerHeight = 55;
-      pdf.setFillColor(28, 32, 42);
-      pdf.rect(0, 0, pageWidth, headerHeight, 'F');
-      pdf.setFillColor(59, 130, 246);
-      pdf.rect(0, headerHeight - 2, pageWidth, 2, 'F');
-
-      // Brand accent
-      pdf.setFillColor(59, 130, 246);
-      pdf.roundedRect(20, 12, 4, 30, 2, 2, 'F');
-
-      // Garage name
-      pdf.setTextColor(255, 255, 255);
-      pdf.setFontSize(22);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(garage.name, 34, 28);
-
-      // Date/Time
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(161, 161, 170);
-      pdf.text(dateTimeString + (garage.state ? ` (${garage.state})` : ''), 34, 44);
-
-      // Level badge
-      const levelText = currentLevel.name;
-      pdf.setFontSize(11);
-      const levelTextWidth = pdf.getTextWidth(levelText) + 20;
-      pdf.setFillColor(59, 130, 246);
-      pdf.roundedRect(pageWidth - levelTextWidth - 20, 15, levelTextWidth, 26, 13, 13, 'F');
-      pdf.setTextColor(255, 255, 255);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(levelText, pageWidth - levelTextWidth / 2 - 20, 33, { align: 'center' });
-
-      // Canvas area
-      const levelDevicesPdf = safeArray(currentLevel.devices);
-      const canvasMargin = 32;
-      const legendHeight = 36;
-      const canvasY = headerHeight + 20;
-      const canvasWidth = pageWidth - canvasMargin * 2;
-      const canvasHeight = pageHeight - canvasY - legendHeight - 20;
-
-      // Canvas container
-      pdf.setFillColor(22, 26, 36);
-      pdf.setDrawColor(38, 44, 58);
-      pdf.setLineWidth(1);
-      pdf.roundedRect(canvasMargin, canvasY, canvasWidth, canvasHeight, 8, 8, 'FD');
-
-      // Calculate bounds for scaling based on devices
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      let hasContent = false;
-
-      levelDevicesPdf.forEach(device => {
-        minX = Math.min(minX, device.x - 20);
-        minY = Math.min(minY, device.y - 20);
-        maxX = Math.max(maxX, device.x + 20);
-        maxY = Math.max(maxY, device.y + 20);
-        hasContent = true;
+    try {
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'pt',
+        format: 'a4'
       });
 
-      if (!hasContent) {
-        minX = 0; minY = 0; maxX = 800; maxY = 600;
-      }
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
 
-      const contentWidth = maxX - minX;
-      const contentHeight = maxY - minY;
-      const innerPad = 16;
-      const availableWidth = canvasWidth - innerPad * 2;
-      const availableHeight = canvasHeight - innerPad * 2;
-      const scale = Math.min(availableWidth / contentWidth, availableHeight / contentHeight, 1.2);
-      const offsetX = canvasMargin + innerPad + (availableWidth - contentWidth * scale) / 2 - minX * scale;
-      const offsetY = canvasY + innerPad + (availableHeight - contentHeight * scale) / 2 - minY * scale;
-
-      // Devices
-      levelDevicesPdf.forEach(device => {
-        const x = offsetX + device.x * scale;
-        const y = offsetY + device.y * scale;
-        const r = Math.max(6, 10 * scale);
-
-        let deviceColor;
-        if (device.type?.startsWith('cam-')) deviceColor = [59, 130, 246];
-        else if (device.type?.startsWith('sensor-')) deviceColor = [245, 158, 11];
-        else deviceColor = [34, 197, 94];
-
-        pdf.setFillColor(deviceColor[0] * 0.3, deviceColor[1] * 0.3, deviceColor[2] * 0.3);
-        pdf.circle(x, y, r + 3, 'F');
-        pdf.setFillColor(...deviceColor);
-        pdf.circle(x, y, r, 'F');
-        pdf.setFillColor(Math.min(255, deviceColor[0] + 60), Math.min(255, deviceColor[1] + 60), Math.min(255, deviceColor[2] + 60));
-        pdf.circle(x - r * 0.2, y - r * 0.2, r * 0.35, 'F');
-        pdf.setDrawColor(255, 255, 255);
-        pdf.setLineWidth(1.5);
-        pdf.circle(x, y, r, 'D');
-
-        pdf.setTextColor(200, 210, 220);
-        pdf.setFontSize(Math.max(6, 8 * scale));
-        pdf.setFont('helvetica', 'normal');
-        pdf.text(device.name || '', x, y + r + 12 * scale, { align: 'center' });
+      // Get current date/time for PDF
+      const timezone = getTimezoneForState(garage.state);
+      const now = new Date();
+      const dateTimeString = now.toLocaleString('en-US', {
+        timeZone: timezone,
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
       });
 
-      // Legend
-      const legendY = pageHeight - legendHeight - 12;
-      pdf.setFillColor(28, 32, 42);
-      pdf.setDrawColor(45, 50, 60);
-      pdf.setLineWidth(1);
-      pdf.roundedRect(canvasMargin, legendY, canvasWidth, legendHeight, 6, 6, 'FD');
-
-      pdf.setFontSize(8);
-      pdf.setFont('helvetica', 'normal');
-      let lx = canvasMargin + 20;
-      const ly = legendY + legendHeight / 2 + 3;
-
-      const drawLegendItem = (label, color) => {
-        pdf.setFillColor(...color);
-        pdf.circle(lx, ly - 1, 5, 'F');
-        pdf.setDrawColor(255, 255, 255);
-        pdf.setLineWidth(0.75);
-        pdf.circle(lx, ly - 1, 5, 'D');
-        lx += 12;
-        pdf.setTextColor(170, 180, 190);
-        pdf.text(label, lx, ly);
-        lx += pdf.getTextWidth(label) + 24;
+      // Helper: load image as data URL and get dimensions
+      const loadImageForPdf = (src) => {
+        return new Promise((resolve) => {
+          if (!src) { resolve(null); return; }
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            try {
+              const canvas = document.createElement('canvas');
+              canvas.width = img.naturalWidth;
+              canvas.height = img.naturalHeight;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0);
+              resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: img.naturalWidth, height: img.naturalHeight });
+            } catch { resolve(null); }
+          };
+          img.onerror = () => resolve(null);
+          img.src = src;
+        });
       };
 
-      drawLegendItem('Camera', [59, 130, 246]);
-      drawLegendItem('Sensor', [245, 158, 11]);
-      drawLegendItem('Sign', [34, 197, 94]);
+      // Comprehensive color map for every device sub-type
+      const typeColorMap = {
+        'cam-fli':          [59, 130, 246],   // blue
+        'cam-lpr':          [99, 102, 241],   // indigo
+        'cam-people':       [14, 165, 233],   // sky
+        'cam-ptz':          [6, 182, 212],    // cyan
+        'cam-dome':         [56, 189, 248],   // light blue
+        'camera':           [59, 130, 246],
+        'sign-led':         [34, 197, 94],    // green
+        'sign-static':      [22, 163, 74],    // darker green
+        'sign-designable':  [74, 222, 128],   // light green
+        'sign':             [34, 197, 94],
+        'sensor-nwave':     [245, 158, 11],   // amber
+        'sensor-parksol':   [251, 146, 60],   // orange
+        'sensor-proco':     [234, 179, 8],    // yellow
+        'sensor-ensight':   [217, 119, 6],    // dark amber
+        'sensor-space':     [253, 186, 116],  // peach
+        'sensor':           [245, 158, 11],
+        'server':           [168, 85, 247],   // purple
+      };
+      const getColor = (type) => typeColorMap[type] || [161, 161, 170];
 
-      // Page footer
-      pdf.setFillColor(59, 130, 246);
-      pdf.roundedRect(pageWidth / 2 - 30, pageHeight - 18, 60, 16, 8, 8, 'F');
-      pdf.setTextColor(255, 255, 255);
-      pdf.setFontSize(9);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(`${levelIndex + 1} / ${garage.levels.length}`, pageWidth / 2, pageHeight - 7, { align: 'center' });
+      // Convert hex color string to [r, g, b] array
+      const hexToRgb = (hex) => {
+        if (!hex || typeof hex !== 'string') return null;
+        const h = hex.replace('#', '');
+        if (h.length === 3) return [parseInt(h[0]+h[0],16), parseInt(h[1]+h[1],16), parseInt(h[2]+h[2],16)];
+        if (h.length === 6) return [parseInt(h.substring(0,2),16), parseInt(h.substring(2,4),16), parseInt(h.substring(4,6),16)];
+        return null;
+      };
+
+      // Get the effective color for a device: custom color takes priority over type color
+      const getDeviceRgb = (device) => hexToRgb(device.color) || getColor(device.type);
+
+      // Friendly label map
+      const typeLabelMap = {
+        'cam-fli': 'FLI Camera', 'cam-lpr': 'LPR Camera', 'cam-people': 'People Counting',
+        'cam-ptz': 'PTZ Camera', 'cam-dome': 'Dome Camera',
+        'sign-led': 'LED Sign', 'sign-static': 'Static Sign', 'sign-designable': 'Designable Sign',
+        'sensor-nwave': 'NWAVE Sensor', 'sensor-parksol': 'Parksol Sensor',
+        'sensor-proco': 'Proco Sensor', 'sensor-ensight': 'Ensight Vision',
+        'sensor-space': 'Space Sensor', 'server': 'Server',
+      };
+      const getLabel = (type) => typeLabelMap[type] || type || 'Device';
+
+      // Short label for the dot itself
+      const getDotLabel = (type) => {
+        if (type === 'cam-fli') return 'FLI';
+        if (type === 'cam-lpr') return 'LPR';
+        if (type === 'cam-people') return 'PPL';
+        if (type === 'cam-ptz') return 'PTZ';
+        if (type === 'cam-dome') return 'DME';
+        if (type === 'server') return 'SRV';
+        if (type?.startsWith('sign-')) return type.replace('sign-', '').charAt(0).toUpperCase();
+        if (type?.startsWith('sensor-')) return 'P';
+        return '';
+      };
+
+      // Helper: draw a direction cone (wedge) in the PDF
+      const drawCone = (pdf, cx, cy, rotation, radius, colorRgb, opacity) => {
+        const angleSpread = 60; // degrees
+        const startAngle = ((rotation || 0) - 30) * Math.PI / 180; // same as Konva: 0=right, clockwise
+        const endAngle = startAngle + (angleSpread * Math.PI / 180);
+        const steps = 24;
+        const points = [[cx, cy]];
+        for (let i = 0; i <= steps; i++) {
+          const a = startAngle + (endAngle - startAngle) * (i / steps);
+          points.push([cx + Math.cos(a) * radius, cy + Math.sin(a) * radius]);
+        }
+        // Draw filled triangle/wedge using lines with low opacity
+        // jsPDF doesn't support true alpha, so we blend the color toward background (22, 26, 36)
+        const bg = [22, 26, 36];
+        const blended = colorRgb.map((c, i) => Math.round(bg[i] * (1 - opacity) + c * opacity));
+        pdf.setFillColor(...blended);
+        // Build the polygon path
+        const startPt = points[0];
+        const pathLines = points.slice(1);
+        // Use triangle fan approach
+        for (let i = 0; i < pathLines.length - 1; i++) {
+          pdf.triangle(
+            startPt[0], startPt[1],
+            pathLines[i][0], pathLines[i][1],
+            pathLines[i + 1][0], pathLines[i + 1][1],
+            'F'
+          );
+        }
+      };
+
+      const levels = safeArray(garage.levels);
+      if (levels.length === 0) {
+        alert('No levels to export.');
+        return;
+      }
+
+      for (let levelIndex = 0; levelIndex < levels.length; levelIndex++) {
+        const currentLevel = levels[levelIndex];
+        if (levelIndex > 0) pdf.addPage();
+
+        // Background
+        pdf.setFillColor(18, 20, 28);
+        pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+
+        // Header bar
+        const headerHeight = 55;
+        pdf.setFillColor(28, 32, 42);
+        pdf.rect(0, 0, pageWidth, headerHeight, 'F');
+        pdf.setFillColor(59, 130, 246);
+        pdf.rect(0, headerHeight - 2, pageWidth, 2, 'F');
+
+        // Brand accent bar
+        pdf.setFillColor(59, 130, 246);
+        pdf.roundedRect(20, 12, 4, 30, 2, 2, 'F');
+
+        // Garage name
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFontSize(22);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(String(garage.name || 'Untitled'), 34, 28);
+
+        // Date/Time + address
+        pdf.setFontSize(9);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(161, 161, 170);
+        pdf.text(dateTimeString + (garage.state ? ` (${garage.state})` : ''), 34, 44);
+
+        // Level badge
+        const levelText = String(currentLevel.name || `Level ${levelIndex + 1}`);
+        pdf.setFontSize(11);
+        pdf.setFont('helvetica', 'bold');
+        const levelTextWidth = pdf.getTextWidth(levelText) + 20;
+        pdf.setFillColor(59, 130, 246);
+        pdf.roundedRect(pageWidth - levelTextWidth - 20, 15, levelTextWidth, 26, 13, 13, 'F');
+        pdf.setTextColor(255, 255, 255);
+        pdf.text(levelText, pageWidth - levelTextWidth / 2 - 20, 33, { align: 'center' });
+
+        // Filter placed devices
+        const placedDevices = safeArray(currentLevel.devices).filter(d =>
+          d && typeof d.x === 'number' && typeof d.y === 'number' && !isNaN(d.x) && !isNaN(d.y) && !d.pendingPlacement
+        );
+
+        // Collect unique types on this level for the legend
+        const typesOnLevel = new Map(); // type -> count
+        placedDevices.forEach(d => {
+          const t = d.type || 'unknown';
+          typesOnLevel.set(t, (typesOnLevel.get(t) || 0) + 1);
+        });
+
+        // Layout dimensions
+        const canvasMargin = 32;
+        const legendItemH = 16;
+        const legendRows = Math.max(1, Math.ceil(typesOnLevel.size / 4));
+        const legendHeight = legendRows * legendItemH + 18;
+        const canvasY = headerHeight + 16;
+        const canvasWidth = pageWidth - canvasMargin * 2;
+        const canvasHeight = pageHeight - canvasY - legendHeight - 28;
+
+        // Canvas container
+        pdf.setFillColor(22, 26, 36);
+        pdf.setDrawColor(38, 44, 58);
+        pdf.setLineWidth(1);
+        pdf.roundedRect(canvasMargin, canvasY, canvasWidth, canvasHeight, 8, 8, 'FD');
+
+        // Render background image if available
+        if (currentLevel.bgImage) {
+          try {
+            const imgData = await loadImageForPdf(currentLevel.bgImage);
+            if (imgData) {
+              const innerPad = 4;
+              const imgAspect = imgData.width / imgData.height;
+              const areaW = canvasWidth - innerPad * 2;
+              const areaH = canvasHeight - innerPad * 2;
+              const areaAspect = areaW / areaH;
+              let drawW, drawH;
+              if (imgAspect > areaAspect) { drawW = areaW; drawH = areaW / imgAspect; }
+              else { drawH = areaH; drawW = areaH * imgAspect; }
+              const drawX = canvasMargin + innerPad + (areaW - drawW) / 2;
+              const drawY = canvasY + innerPad + (areaH - drawH) / 2;
+              pdf.addImage(imgData.dataUrl, 'JPEG', drawX, drawY, drawW, drawH);
+            }
+          } catch (e) {
+            console.warn('Could not render background image in PDF:', e);
+          }
+        }
+
+        if (placedDevices.length > 0) {
+          // Compute bounds
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          placedDevices.forEach(d => {
+            minX = Math.min(minX, d.x - 30);
+            minY = Math.min(minY, d.y - 30);
+            maxX = Math.max(maxX, d.x + 30);
+            maxY = Math.max(maxY, d.y + 30);
+          });
+          const contentWidth = Math.max(maxX - minX, 1);
+          const contentHeight = Math.max(maxY - minY, 1);
+          const innerPad = 20;
+          const availW = canvasWidth - innerPad * 2;
+          const availH = canvasHeight - innerPad * 2;
+          const scale = Math.min(availW / contentWidth, availH / contentHeight, 1.5);
+          const offsetX = canvasMargin + innerPad + (availW - contentWidth * scale) / 2 - minX * scale;
+          const offsetY = canvasY + innerPad + (availH - contentHeight * scale) / 2 - minY * scale;
+
+          // === PASS 1: Draw direction cones first (underneath dots) ===
+          placedDevices.forEach(device => {
+            const isCamera = device.type?.startsWith('cam-');
+            if (!isCamera) return;
+            const x = offsetX + device.x * scale;
+            const y = offsetY + device.y * scale;
+            const isDualLens = device.hardwareType === 'dual-lens';
+            const baseColor = getDeviceRgb(device);
+            const coneRadius = (device.coneSize ?? 40) * scale;
+
+            if (isDualLens) {
+              const rot1 = device.stream1?.rotation ?? device.rotation ?? 0;
+              const rot2 = device.stream2?.rotation ?? device.rotation ?? 0;
+              const size1 = (device.stream1?.coneSize ?? device.coneSize ?? 40) * scale;
+              const size2 = (device.stream2?.coneSize ?? device.coneSize ?? 40) * scale;
+              const color1 = hexToRgb(device.stream1?.color) || baseColor;
+              const color2 = hexToRgb(device.stream2?.color) || baseColor;
+              drawCone(pdf, x, y, rot1, size1, color1, 0.18);
+              drawCone(pdf, x, y, rot2, size2, color2, 0.18);
+            } else {
+              const rot = device.rotation ?? 0;
+              drawCone(pdf, x, y, rot, coneRadius, baseColor, 0.2);
+            }
+          });
+
+          // === PASS 2: Draw device dots and labels ===
+          placedDevices.forEach(device => {
+            const x = offsetX + device.x * scale;
+            const y = offsetY + device.y * scale;
+            const r = Math.max(7, 11 * scale);
+            const deviceColor = getDeviceRgb(device);
+
+            // Outer glow
+            pdf.setFillColor(
+              Math.round(deviceColor[0] * 0.25),
+              Math.round(deviceColor[1] * 0.25),
+              Math.round(deviceColor[2] * 0.25)
+            );
+            pdf.circle(x, y, r + 4, 'F');
+
+            // Main circle
+            pdf.setFillColor(...deviceColor);
+            pdf.circle(x, y, r, 'F');
+
+            // Border
+            pdf.setDrawColor(255, 255, 255);
+            pdf.setLineWidth(1.2);
+            pdf.circle(x, y, r, 'D');
+
+            // Dot label (type abbreviation inside circle)
+            const dotLabel = getDotLabel(device.type);
+            if (dotLabel) {
+              pdf.setTextColor(255, 255, 255);
+              pdf.setFontSize(Math.max(5, 7 * scale));
+              pdf.setFont('helvetica', 'bold');
+              pdf.text(dotLabel, x, y + (Math.max(5, 7 * scale)) * 0.35, { align: 'center' });
+            }
+
+            // Device name label below
+            pdf.setTextColor(210, 215, 225);
+            pdf.setFontSize(Math.max(5.5, 7.5 * scale));
+            pdf.setFont('helvetica', 'normal');
+            pdf.text(String(device.name || ''), x, y + r + 10 * scale, { align: 'center' });
+          });
+        } else {
+          // No placed devices message
+          pdf.setTextColor(100, 100, 110);
+          pdf.setFontSize(13);
+          pdf.setFont('helvetica', 'italic');
+          pdf.text('No devices placed on this level', canvasMargin + canvasWidth / 2, canvasY + canvasHeight / 2, { align: 'center' });
+        }
+
+        // =================== LEGEND ===================
+        const legendY = pageHeight - legendHeight - 16;
+        pdf.setFillColor(24, 28, 38);
+        pdf.setDrawColor(45, 50, 60);
+        pdf.setLineWidth(0.75);
+        pdf.roundedRect(canvasMargin, legendY, canvasWidth, legendHeight, 6, 6, 'FD');
+
+        // Legend title
+        pdf.setFontSize(7);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(120, 120, 135);
+        pdf.text('LEGEND', canvasMargin + 10, legendY + 12);
+
+        // Draw legend items dynamically based on device types actually on this level
+        const legendCols = 4;
+        const colWidth = (canvasWidth - 20) / legendCols;
+        let colIdx = 0;
+        const entries = Array.from(typesOnLevel.entries());
+        entries.forEach(([type, count], idx) => {
+          const row = Math.floor(idx / legendCols);
+          const col = idx % legendCols;
+          const itemX = canvasMargin + 12 + col * colWidth;
+          const itemY = legendY + 22 + row * legendItemH;
+          const color = getColor(type);
+
+          // Colored circle
+          pdf.setFillColor(...color);
+          pdf.circle(itemX + 4, itemY, 4, 'F');
+          pdf.setDrawColor(255, 255, 255);
+          pdf.setLineWidth(0.5);
+          pdf.circle(itemX + 4, itemY, 4, 'D');
+
+          // Label with count
+          pdf.setTextColor(190, 195, 205);
+          pdf.setFontSize(7.5);
+          pdf.setFont('helvetica', 'normal');
+          pdf.text(`${getLabel(type)} (${count})`, itemX + 12, itemY + 3);
+        });
+
+        // If no devices, show a generic legend
+        if (entries.length === 0) {
+          pdf.setTextColor(100, 100, 110);
+          pdf.setFontSize(7.5);
+          pdf.setFont('helvetica', 'italic');
+          pdf.text('No devices on this level', canvasMargin + 60, legendY + 22);
+        }
+
+        // Page number footer pill
+        pdf.setFillColor(59, 130, 246);
+        pdf.roundedRect(pageWidth / 2 - 30, pageHeight - 18, 60, 14, 7, 7, 'F');
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFontSize(8);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(`${levelIndex + 1} / ${levels.length}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+      }
+
+      pdf.save(`${(garage.name || 'Layout').replace(/\s+/g, '_')}_Layout.pdf`);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      alert('PDF export failed: ' + (err?.message || 'Unknown error'));
     }
-
-    pdf.save(`${garage.name.replace(/\s+/g, '_')}_Layout.pdf`);
   }, [garage]);
 
   // Guard
@@ -1267,6 +1508,33 @@ const EditorView = () => {
                 <span style={{ fontWeight: 600, color: mapFilter.includes('signs') ? '#22c55e' : theme.text }}>{stats.signs}</span>
                 <span>Signs</span>
               </button>
+
+              <button
+                onClick={() => setMapFilter(prev => prev.includes('servers') ? prev.filter(f => f !== 'servers') : [...prev, 'servers'])}
+                title={mapFilter.includes('servers') ? 'Remove servers from filter' : 'Add servers to filter'}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 14px',
+                  background: mapFilter.includes('servers') ? 'rgba(168, 85, 247, 0.2)' : theme.bgButton,
+                  border: `1px solid ${mapFilter.includes('servers') ? '#a855f7' : theme.borderSubtle}`,
+                  borderRadius: 8,
+                  fontSize: 13,
+                  color: mapFilter.includes('servers') ? '#a855f7' : theme.textSecondary,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                  <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                  <line x1="6" y1="6" x2="6.01" y2="6" />
+                  <line x1="6" y1="18" x2="6.01" y2="18" />
+                </svg>
+                <span style={{ fontWeight: 600, color: mapFilter.includes('servers') ? '#a855f7' : theme.text }}>{stats.servers}</span>
+                <span>Servers</span>
+              </button>
             </div>
 
             {/* Action Buttons */}
@@ -1439,6 +1707,29 @@ const EditorView = () => {
                   {sidebarCollapsed ? (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0', gap: 8 }}>
                       <button
+                        onClick={() => { setSidebarCollapsed(false); setActiveTab('servers'); }}
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 8,
+                          border: activeTab === 'servers' ? '1px solid #3b82f6' : '1px solid transparent',
+                          background: activeTab === 'servers' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                          color: activeTab === 'servers' ? '#3b82f6' : theme.textMuted,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                        title="Servers"
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                          <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                          <line x1="6" y1="6" x2="6.01" y2="6" />
+                          <line x1="6" y1="18" x2="6.01" y2="18" />
+                        </svg>
+                      </button>
+                      <button
                         onClick={() => { setSidebarCollapsed(false); setActiveTab('cameras'); }}
                         style={{
                           width: 36,
@@ -1533,6 +1824,18 @@ const EditorView = () => {
                     <>
                   <div className="palette-header-modern">
                     <div className="palette-tabs-modern">
+                      <button
+                        className={`palette-tab-modern ${activeTab === 'servers' ? 'active' : ''}`}
+                        onClick={() => { setActiveTab('servers'); setShowAddForm(false); }}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                          <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                          <line x1="6" y1="6" x2="6.01" y2="6" />
+                          <line x1="6" y1="18" x2="6.01" y2="18" />
+                        </svg>
+                        <span className="tab-label-modern">Servers</span>
+                      </button>
                       <button
                         className={`palette-tab-modern ${activeTab === 'cameras' ? 'active' : ''}`}
                         onClick={() => { setActiveTab('cameras'); setShowAddForm(false); }}
@@ -1922,16 +2225,48 @@ const EditorView = () => {
                     ) : !showAddForm ? (
                       <>
                         <div className="palette-title">
-                          {activeTab === 'cameras' ? 'Cameras' : activeTab === 'signs' ? 'Signs' : 'Space Monitoring'} on {level.name}
+                          {activeTab === 'cameras' ? 'Cameras' : activeTab === 'signs' ? 'Signs' : activeTab === 'servers' ? 'Servers' : 'Space Monitoring'} {activeTab === 'servers' ? `for ${garage?.name || 'Site'}` : `on ${level.name}`}
                         </div>
 
-                        <button
-                          className="btn-sidebar-action primary"
-                          style={{ marginBottom: 16 }}
-                          onClick={() => setShowAddForm(true)}
-                        >
-                          + Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'signs' ? 'Sign' : 'Sensor Group'}
-                        </button>
+                        {activeTab !== 'servers' && (
+                          <button
+                            className="btn-sidebar-action primary"
+                            style={{ marginBottom: 16 }}
+                            onClick={() => setShowAddForm(true)}
+                          >
+                            + Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'signs' ? 'Sign' : 'Sensor Group'}
+                          </button>
+                        )}
+
+                        {activeTab === 'servers' && (
+                          <button
+                            className="btn-sidebar-action primary"
+                            style={{ marginBottom: 16 }}
+                            onClick={() => {
+                              setNewServer({
+                                name: '',
+                                ram: '',
+                                ramCustom: '',
+                                ssd: '',
+                                ssdCustom: '',
+                                os: '',
+                                osCustom: '',
+                                ethernetPortCount: 2,
+                                ethernetPorts: [
+                                  { mac: '', ip: '', dhcp: false },
+                                  { mac: '', ip: '', dhcp: false }
+                                ],
+                                loginUsername: '',
+                                loginPassword: '',
+                                splashtopLink: '',
+                              });
+                              setShowAddForm(true);
+                              setServerFormTab('identity');
+                            }}
+                          >
+                            + Add Server
+                          </button>
+                        )}
 
                         <div className="device-list-modern" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                           {/* Place All Button - show if there are pending devices */}
@@ -1971,7 +2306,9 @@ const EditorView = () => {
                             </div>
                           )}
 
-                          {activeTab === 'cameras' && cameras.map(cam => (
+                          {activeTab === 'cameras' && cameras.map(cam => {
+                            const isDisabled = cam.status && cam.status.toLowerCase() === 'disabled';
+                            return (
                             <div
                               key={cam.id}
                               className="modern-device-item"
@@ -1983,7 +2320,8 @@ const EditorView = () => {
                                 border: selectedDevice?.id === cam.id
                                   ? '1px solid rgba(59, 130, 246, 0.6)'
                                   : cam.pendingPlacement ? '1px dashed rgba(59, 130, 246, 0.4)' : undefined,
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                opacity: isDisabled ? 0.4 : 1,
                               }}>
                               <div className="device-icon-wrapper">{getDeviceIcon(cam.type)}</div>
                               <div className="device-info-modern" style={{ flex: 1 }}>
@@ -1991,6 +2329,9 @@ const EditorView = () => {
                                 <span className="device-type-modern" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                                   {(cam.ipAddress || cam.stream1?.ipAddress) && <span>{cam.ipAddress || cam.stream1?.ipAddress}:{cam.port || cam.stream1?.port || '554'}</span>}
                                   {!(cam.ipAddress || cam.stream1?.ipAddress) && cam.type}
+                                  {isDisabled && (
+                                    <span style={{ color: '#ef4444', fontSize: 10, fontWeight: 600 }}>• Disabled</span>
+                                  )}
                                   {cam.pendingPlacement && (
                                     <span style={{ color: '#f59e0b', fontSize: 10 }}>• Not placed</span>
                                   )}
@@ -2027,7 +2368,8 @@ const EditorView = () => {
                                 </button>
                               )}
                             </div>
-                          ))}
+                          );
+                          })}
 
                           {/* Place All Button - show if there are pending signs */}
                           {activeTab === 'signs' && pendingSigns.length > 0 && (
@@ -2251,6 +2593,245 @@ const EditorView = () => {
                               )}
                             </div>
                           ))}
+
+                          {/* Servers Tab Content */}
+                          {activeTab === 'servers' && garageServers.length === 0 && (
+                            <div className="sidebar-empty-state">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                              </svg>
+                              <p>No servers configured</p>
+                              <p style={{ fontSize: 11, opacity: 0.7 }}>Click "+ Add Server" to add one</p>
+                            </div>
+                          )}
+
+                          {activeTab === 'servers' && garageServers.map(server => {
+                            const isExpanded = selectedServerId === server.id;
+                            return (
+                            <div
+                              key={server.id}
+                              className="modern-device-item"
+                              style={{
+                                cursor: 'pointer',
+                                flexDirection: 'column',
+                                alignItems: 'stretch',
+                                border: isExpanded ? '1px solid rgba(168, 85, 247, 0.4)' : undefined,
+                                background: isExpanded ? 'rgba(168, 85, 247, 0.08)' : undefined,
+                              }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }} onClick={() => { setSelectedServerId(isExpanded ? null : server.id); setServerFormTab('identity'); }}>
+                                <div className="device-icon-wrapper" style={{ background: 'rgba(168, 85, 247, 0.15)', color: '#a855f7' }}>
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                                    <line x1="6" y1="6" x2="6.01" y2="6" />
+                                    <line x1="6" y1="18" x2="6.01" y2="18" />
+                                  </svg>
+                                </div>
+                                <div className="device-info-modern" style={{ flex: 1 }}>
+                                  <span className="device-name-modern">{server.name}</span>
+                                  <span className="device-type-modern">
+                                    {server.ipAddress || server.ethernetPorts?.[0]?.ip || 'No IP set'}
+                                  </span>
+                                </div>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }}>
+                                  <path d="M6 9l6 6 6-6"/>
+                                </svg>
+                              </div>
+
+                              {isExpanded && (
+                                <div style={{ marginTop: 10, padding: '10px 0 0', borderTop: '1px solid rgba(168, 85, 247, 0.15)', display: 'flex', flexDirection: 'column', gap: 0, fontSize: 12 }}>
+                                  {/* Server Editor Tabs */}
+                                  <div style={{ display: 'flex', gap: 1, marginBottom: 10 }}>
+                                    {[{ id: 'identity', label: 'Identity' }, { id: 'networking', label: 'Network' }, { id: 'splashtop', label: 'Splashtop' }].map(t => (
+                                      <button key={t.id} onClick={(e) => { e.stopPropagation(); setServerFormTab(t.id); }} style={{
+                                        flex: 1, padding: '6px 4px', fontSize: 10, fontWeight: serverFormTab === t.id ? 600 : 400, cursor: 'pointer',
+                                        background: serverFormTab === t.id ? 'rgba(168, 85, 247, 0.15)' : 'transparent',
+                                        border: serverFormTab === t.id ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid #3f3f46',
+                                        borderRadius: 4, color: serverFormTab === t.id ? '#c084fc' : '#71717a', transition: 'all 0.15s'
+                                      }}>{t.label}</button>
+                                    ))}
+                                  </div>
+
+                                  {/* Identity Tab */}
+                                  {serverFormTab === 'identity' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} onClick={(e) => e.stopPropagation()}>
+                                      <div>
+                                        <label style={{ fontSize: 10, color: '#71717a', display: 'block', marginBottom: 2 }}>Server Name</label>
+                                        <input type="text" value={server.name || ''} placeholder="Server-01" onChange={(e) => updateServerProp(server.id, { name: e.target.value })} style={{ width: '100%', padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }} />
+                                      </div>
+                                      <div style={{ display: 'flex', gap: 6 }}>
+                                        <div style={{ flex: 1 }}>
+                                          <label style={{ fontSize: 10, color: '#71717a', display: 'block', marginBottom: 2 }}>RAM</label>
+                                          <select value={server.ram || ''} onChange={(e) => updateServerProp(server.id, { ram: e.target.value, ramCustom: e.target.value === 'Custom' ? (server.ramCustom || '') : '' })} style={{ width: '100%', padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }}>
+                                            <option value="">Select RAM…</option>
+                                            <option>8 GB</option>
+                                            <option>16 GB</option>
+                                            <option>32 GB</option>
+                                            <option>64 GB</option>
+                                            <option>128 GB</option>
+                                            <option>256 GB</option>
+                                            <option>Custom</option>
+                                          </select>
+                                          {server.ram === 'Custom' && (
+                                            <input type="text" value={server.ramCustom || ''} placeholder="e.g. 48 GB" onChange={(e) => updateServerProp(server.id, { ramCustom: e.target.value })} style={{ width: '100%', marginTop: 4, padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }} />
+                                          )}
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                          <label style={{ fontSize: 10, color: '#71717a', display: 'block', marginBottom: 2 }}>SSD</label>
+                                          <select value={server.ssd || ''} onChange={(e) => updateServerProp(server.id, { ssd: e.target.value, ssdCustom: e.target.value === 'Custom' ? (server.ssdCustom || '') : '' })} style={{ width: '100%', padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }}>
+                                            <option value="">Select SSD…</option>
+                                            <option>256 GB</option>
+                                            <option>512 GB</option>
+                                            <option>1 TB</option>
+                                            <option>2 TB</option>
+                                            <option>4 TB</option>
+                                            <option>8 TB</option>
+                                            <option>Custom</option>
+                                          </select>
+                                          {server.ssd === 'Custom' && (
+                                            <input type="text" value={server.ssdCustom || ''} placeholder="e.g. 1.5 TB" onChange={(e) => updateServerProp(server.id, { ssdCustom: e.target.value })} style={{ width: '100%', marginTop: 4, padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }} />
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <label style={{ fontSize: 10, color: '#71717a', display: 'block', marginBottom: 2 }}>Operating System</label>
+                                        <select value={server.os || ''} onChange={(e) => updateServerProp(server.id, { os: e.target.value, osCustom: e.target.value === 'Custom' ? (server.osCustom || '') : '' })} style={{ width: '100%', padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }}>
+                                          <option value="">Select OS…</option>
+                                          <option>Windows Server 2019</option>
+                                          <option>Windows Server 2022</option>
+                                          <option>Windows Server 2025</option>
+                                          <option>Windows 10 IoT</option>
+                                          <option>Windows 11 IoT</option>
+                                          <option>Ubuntu Server 22.04 LTS</option>
+                                          <option>Ubuntu Server 24.04 LTS</option>
+                                          <option>RHEL 9</option>
+                                          <option>Custom</option>
+                                        </select>
+                                        {server.os === 'Custom' && (
+                                          <input type="text" value={server.osCustom || ''} placeholder="Enter custom OS" onChange={(e) => updateServerProp(server.id, { osCustom: e.target.value })} style={{ width: '100%', marginTop: 4, padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }} />
+                                        )}
+                                      </div>
+                                      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                                        <span style={{ fontSize: 10, color: '#a855f7', background: 'rgba(168, 85, 247, 0.12)', padding: '2px 8px', borderRadius: 4 }}>
+                                          {(() => {
+                                            let count = 0;
+                                            safeArray(garage?.levels).forEach(lvl => { safeArray(lvl?.devices).forEach(d => { if (d?.serverId === server.id) count++; }); });
+                                            return `${count} device${count !== 1 ? 's' : ''} assigned`;
+                                          })()}
+                                        </span>
+                                        {!server.pendingPlacement && server.x != null && (
+                                          <span style={{ fontSize: 10, color: '#22c55e', background: 'rgba(34, 197, 94, 0.12)', padding: '2px 8px', borderRadius: 4 }}>On Map</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Networking Tab */}
+                                  {serverFormTab === 'networking' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} onClick={(e) => e.stopPropagation()}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                                        <label style={{ fontSize: 11, color: '#a1a1aa' }}>Ports:</label>
+                                        <select value={server.ethernetPortCount || server.ethernetPorts?.length || 2} onChange={(e) => {
+                                          const count = parseInt(e.target.value, 10);
+                                          const ports = [...(server.ethernetPorts || [])];
+                                          while (ports.length < count) ports.push({ mac: '', ip: '', dhcp: false });
+                                          updateServerProp(server.id, { ethernetPortCount: count, ethernetPorts: ports.slice(0, count) });
+                                        }} style={{ padding: '4px 8px', fontSize: 12, borderRadius: 4, border: '1px solid #3f3f46', background: '#27272a', color: '#fafafa' }}>
+                                          {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}</option>)}
+                                        </select>
+                                      </div>
+                                      {(server.ethernetPorts || []).map((port, idx) => (
+                                        <div key={idx} style={{ background: 'rgba(168, 85, 247, 0.06)', borderRadius: 6, padding: '8px 10px', border: '1px solid rgba(168, 85, 247, 0.1)' }}>
+                                          <div style={{ fontWeight: 600, fontSize: 11, color: '#c084fc', marginBottom: 6 }}>Port {idx + 1}</div>
+                                          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                                            <div style={{ flex: 1 }}>
+                                              <label style={{ fontSize: 10, color: '#71717a', display: 'block', marginBottom: 2 }}>MAC</label>
+                                              <input type="text" value={port.mac || ''} placeholder="00:1A:2B:3C:4D:5E" onChange={(e) => {
+                                                const ports = [...(server.ethernetPorts || [])]; ports[idx] = { ...ports[idx], mac: e.target.value };
+                                                updateServerProp(server.id, { ethernetPorts: ports });
+                                              }} style={{ width: '100%', padding: '5px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 11 }} />
+                                            </div>
+                                            <div style={{ flex: 1 }}>
+                                              <label style={{ fontSize: 10, color: '#71717a', display: 'block', marginBottom: 2 }}>IP</label>
+                                              <input type="text" value={port.ip || ''} placeholder="10.16.6.100" onChange={(e) => {
+                                                const ports = [...(server.ethernetPorts || [])]; ports[idx] = { ...ports[idx], ip: e.target.value };
+                                                updateServerProp(server.id, { ethernetPorts: ports });
+                                              }} style={{ width: '100%', padding: '5px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 11 }} />
+                                            </div>
+                                          </div>
+                                          <div style={{ display: 'flex', gap: 4 }}>
+                                            <button onClick={() => { const ports = [...(server.ethernetPorts || [])]; ports[idx] = { ...ports[idx], dhcp: false }; updateServerProp(server.id, { ethernetPorts: ports }); }} style={{ padding: '3px 10px', borderRadius: 4, fontSize: 10, cursor: 'pointer', border: !port.dhcp ? '2px solid #a855f7' : '1px solid #3f3f46', background: !port.dhcp ? 'rgba(168, 85, 247, 0.15)' : 'transparent', color: !port.dhcp ? '#a855f7' : '#a1a1aa' }}>Static</button>
+                                            <button onClick={() => { const ports = [...(server.ethernetPorts || [])]; ports[idx] = { ...ports[idx], dhcp: true }; updateServerProp(server.id, { ethernetPorts: ports }); }} style={{ padding: '3px 10px', borderRadius: 4, fontSize: 10, cursor: 'pointer', border: port.dhcp ? '2px solid #a855f7' : '1px solid #3f3f46', background: port.dhcp ? 'rgba(168, 85, 247, 0.15)' : 'transparent', color: port.dhcp ? '#a855f7' : '#a1a1aa' }}>DHCP</button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {/* Splashtop Tab */}
+                                  {serverFormTab === 'splashtop' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} onClick={(e) => e.stopPropagation()}>
+                                      <div style={{ display: 'flex', gap: 6 }}>
+                                        <div style={{ flex: 1 }}>
+                                          <label style={{ fontSize: 10, color: '#71717a', display: 'block', marginBottom: 2 }}>Username</label>
+                                          <input type="text" value={server.loginUsername || ''} placeholder="Administrator" onChange={(e) => updateServerProp(server.id, { loginUsername: e.target.value })} style={{ width: '100%', padding: '5px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 11 }} />
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                          <label style={{ fontSize: 10, color: '#71717a', display: 'block', marginBottom: 2 }}>Password</label>
+                                          <input type="text" value={server.loginPassword || ''} placeholder="password" onChange={(e) => updateServerProp(server.id, { loginPassword: e.target.value })} style={{ width: '100%', padding: '5px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 11 }} />
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <label style={{ fontSize: 10, color: '#71717a', display: 'block', marginBottom: 2 }}>Shortcut URL</label>
+                                        <input type="text" value={server.splashtopLink || ''} placeholder="st-business://com.splashtop.business/?shortcut=..." onChange={(e) => updateServerProp(server.id, { splashtopLink: e.target.value })} style={{ width: '100%', padding: '5px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 11 }} />
+                                      </div>
+                                      {server.splashtopLink && (
+                                        <button onClick={(e) => { e.stopPropagation(); window.location.href = server.splashtopLink; }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', marginTop: 4, padding: '8px 12px', background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.18), rgba(59, 130, 246, 0.18))', border: '1px solid rgba(168, 85, 247, 0.4)', borderRadius: 6, color: '#c084fc', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s ease' }} onMouseEnter={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(59, 130, 246, 0.3))'; e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.6)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(168, 85, 247, 0.18), rgba(59, 130, 246, 0.18))'; e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.4)'; }} title="Launch Splashtop Business desktop app">
+                                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                                          Load Splashtop
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Actions */}
+                                  <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                                    {(server.pendingPlacement || server.x == null) && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); placeDeviceOnCanvas(server.id); }}
+                                        style={{ flex: 1, padding: '6px 10px', background: '#a855f7', border: 'none', borderRadius: 4, color: 'white', fontSize: 11, cursor: 'pointer' }}
+                                      >
+                                        Place on Map
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const updatedGarages = garages.map(g => {
+                                          if (g.id !== selectedGarageId) return g;
+                                          return {
+                                            ...g,
+                                            servers: safeArray(g.servers).filter(s => s.id !== server.id),
+                                            levels: safeArray(g.levels).map(l => ({
+                                              ...l,
+                                              devices: safeArray(l.devices).filter(d => d.id !== server.id)
+                                            }))
+                                          };
+                                        });
+                                        setGarages(updatedGarages);
+                                        setSelectedServerId(null);
+                                      }}
+                                      style={{ padding: '6px 10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 4, color: '#ef4444', fontSize: 11, cursor: 'pointer' }}
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                          })}
                         </div>
                       </>
                     ) : (
@@ -2270,10 +2851,13 @@ const EditorView = () => {
                             </svg>
                           </button>
                           <span className="form-title">
-                            Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'spaceMonitoring' ? 'Sensor Group' : 'Sign'}
-                            {activeTab === 'cameras' && cameraFormStep === 1 && ' - Hardware Type'}
-                            {activeTab === 'cameras' && cameraFormStep === 2 && ' - Camera Type'}
-                            {activeTab === 'cameras' && cameraFormStep === 3 && ' - Configuration'}
+                            {activeTab === 'servers' ? 'Add Server' : (
+                              <>Add {activeTab === 'cameras' ? 'Camera' : activeTab === 'spaceMonitoring' ? 'Sensor Group' : 'Sign'}
+                              {activeTab === 'cameras' && cameraFormStep === 1 && ' - Hardware Type'}
+                              {activeTab === 'cameras' && cameraFormStep === 2 && ' - Camera Type'}
+                              {activeTab === 'cameras' && cameraFormStep === 3 && ' - Configuration'}
+                              </>
+                            )}
                           </span>
                         </div>
 
@@ -2588,8 +3172,205 @@ const EditorView = () => {
                             </>
                           )}
 
+                          {/* === SERVER ADD FORM === */}
+                          {activeTab === 'servers' && (
+                            <>
+                              {/* Tab Bar */}
+                              <div style={{ display: 'flex', gap: 1, marginBottom: 12 }}>
+                                {[{ id: 'identity', label: 'Identity' }, { id: 'networking', label: 'Network' }, { id: 'splashtop', label: 'Splashtop' }].map(t => (
+                                  <button key={t.id} onClick={() => setServerFormTab(t.id)} style={{
+                                    flex: 1, padding: '8px 4px', fontSize: 11, fontWeight: serverFormTab === t.id ? 600 : 400, cursor: 'pointer',
+                                    background: serverFormTab === t.id ? 'rgba(168, 85, 247, 0.15)' : 'transparent',
+                                    border: serverFormTab === t.id ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid #3f3f46',
+                                    borderRadius: 4, color: serverFormTab === t.id ? '#c084fc' : '#71717a', transition: 'all 0.15s'
+                                  }}>{t.label}</button>
+                                ))}
+                              </div>
+
+                              {/* Identity Tab */}
+                              {serverFormTab === 'identity' && (
+                                <div className="form-section" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                  <div className="compact-input-row">
+                                    <label>Server Name</label>
+                                    <input type="text" placeholder="Server-01" value={newServer.name} onChange={(e) => setNewServer({ ...newServer, name: e.target.value })} />
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 6 }}>
+                                    <div style={{ flex: 1 }}>
+                                      <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 3 }}>RAM</label>
+                                      <select value={newServer.ram} onChange={(e) => setNewServer({ ...newServer, ram: e.target.value, ramCustom: e.target.value === 'Custom' ? newServer.ramCustom : '' })} style={{ width: '100%', padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }}>
+                                        <option value="">Select RAM…</option>
+                                        <option>8 GB</option>
+                                        <option>16 GB</option>
+                                        <option>32 GB</option>
+                                        <option>64 GB</option>
+                                        <option>128 GB</option>
+                                        <option>256 GB</option>
+                                        <option>Custom</option>
+                                      </select>
+                                      {newServer.ram === 'Custom' && (
+                                        <input type="text" placeholder="e.g. 48 GB" value={newServer.ramCustom} onChange={(e) => setNewServer({ ...newServer, ramCustom: e.target.value })} style={{ width: '100%', marginTop: 4, padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }} />
+                                      )}
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                      <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 3 }}>SSD</label>
+                                      <select value={newServer.ssd} onChange={(e) => setNewServer({ ...newServer, ssd: e.target.value, ssdCustom: e.target.value === 'Custom' ? newServer.ssdCustom : '' })} style={{ width: '100%', padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }}>
+                                        <option value="">Select SSD…</option>
+                                        <option>256 GB</option>
+                                        <option>512 GB</option>
+                                        <option>1 TB</option>
+                                        <option>2 TB</option>
+                                        <option>4 TB</option>
+                                        <option>8 TB</option>
+                                        <option>Custom</option>
+                                      </select>
+                                      {newServer.ssd === 'Custom' && (
+                                        <input type="text" placeholder="e.g. 1.5 TB" value={newServer.ssdCustom} onChange={(e) => setNewServer({ ...newServer, ssdCustom: e.target.value })} style={{ width: '100%', marginTop: 4, padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }} />
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 3 }}>Operating System</label>
+                                    <select value={newServer.os} onChange={(e) => setNewServer({ ...newServer, os: e.target.value, osCustom: e.target.value === 'Custom' ? newServer.osCustom : '' })} style={{ width: '100%', padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }}>
+                                      <option value="">Select OS…</option>
+                                      <option>Windows Server 2019</option>
+                                      <option>Windows Server 2022</option>
+                                      <option>Windows Server 2025</option>
+                                      <option>Windows 10 IoT</option>
+                                      <option>Windows 11 IoT</option>
+                                      <option>Ubuntu Server 22.04 LTS</option>
+                                      <option>Ubuntu Server 24.04 LTS</option>
+                                      <option>RHEL 9</option>
+                                      <option>Custom</option>
+                                    </select>
+                                    {newServer.os === 'Custom' && (
+                                      <input type="text" placeholder="Enter custom OS" value={newServer.osCustom} onChange={(e) => setNewServer({ ...newServer, osCustom: e.target.value })} style={{ width: '100%', marginTop: 4, padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }} />
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Networking Tab */}
+                              {serverFormTab === 'networking' && (
+                                <div className="form-section">
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                                    <label style={{ fontSize: 12, color: '#a1a1aa' }}>Number of ports:</label>
+                                    <select
+                                      value={newServer.ethernetPortCount}
+                                      onChange={(e) => {
+                                        const count = parseInt(e.target.value, 10);
+                                        const ports = [...newServer.ethernetPorts];
+                                        while (ports.length < count) ports.push({ mac: '', ip: '', dhcp: false });
+                                        setNewServer({ ...newServer, ethernetPortCount: count, ethernetPorts: ports.slice(0, count) });
+                                      }}
+                                      style={{ padding: '6px 10px', fontSize: 13, borderRadius: 6, border: '1px solid #3f3f46', background: '#27272a', color: '#fafafa' }}
+                                    >
+                                      {[1, 2, 3, 4, 5, 6, 7, 8].map(n => <option key={n} value={n}>{n}</option>)}
+                                    </select>
+                                  </div>
+                                  {newServer.ethernetPorts.map((port, idx) => (
+                                    <div key={idx} style={{ background: 'rgba(168, 85, 247, 0.06)', borderRadius: 6, padding: '10px', border: '1px solid rgba(168, 85, 247, 0.15)', marginBottom: 8 }}>
+                                      <div style={{ fontWeight: 600, fontSize: 11, color: '#c084fc', marginBottom: 6 }}>Port {idx + 1}</div>
+                                      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                                        <div style={{ flex: 1 }}>
+                                          <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 3 }}>MAC</label>
+                                          <input type="text" placeholder="00:1A:2B:3C:4D:5E" value={port.mac} onChange={(e) => {
+                                            const ports = [...newServer.ethernetPorts]; ports[idx] = { ...ports[idx], mac: e.target.value };
+                                            setNewServer({ ...newServer, ethernetPorts: ports });
+                                          }} style={{ width: '100%', padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }} />
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                          <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 3 }}>IP</label>
+                                          <input type="text" placeholder="10.16.6.100" value={port.ip} onChange={(e) => {
+                                            const ports = [...newServer.ethernetPorts]; ports[idx] = { ...ports[idx], ip: e.target.value };
+                                            setNewServer({ ...newServer, ethernetPorts: ports });
+                                          }} style={{ width: '100%', padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }} />
+                                        </div>
+                                      </div>
+                                      <div style={{ display: 'flex', gap: 4 }}>
+                                        <button onClick={() => { const ports = [...newServer.ethernetPorts]; ports[idx] = { ...ports[idx], dhcp: false }; setNewServer({ ...newServer, ethernetPorts: ports }); }} style={{ padding: '3px 10px', borderRadius: 4, fontSize: 10, cursor: 'pointer', border: !port.dhcp ? '2px solid #a855f7' : '1px solid #3f3f46', background: !port.dhcp ? 'rgba(168, 85, 247, 0.15)' : 'transparent', color: !port.dhcp ? '#a855f7' : '#a1a1aa' }}>Static</button>
+                                        <button onClick={() => { const ports = [...newServer.ethernetPorts]; ports[idx] = { ...ports[idx], dhcp: true }; setNewServer({ ...newServer, ethernetPorts: ports }); }} style={{ padding: '3px 10px', borderRadius: 4, fontSize: 10, cursor: 'pointer', border: port.dhcp ? '2px solid #a855f7' : '1px solid #3f3f46', background: port.dhcp ? 'rgba(168, 85, 247, 0.15)' : 'transparent', color: port.dhcp ? '#a855f7' : '#a1a1aa' }}>DHCP</button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Splashtop Tab */}
+                              {serverFormTab === 'splashtop' && (
+                                <div className="form-section">
+                                  <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                                    <div style={{ flex: 1 }}>
+                                      <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 3 }}>Username</label>
+                                      <input type="text" placeholder="Administrator" value={newServer.loginUsername} onChange={(e) => setNewServer({ ...newServer, loginUsername: e.target.value })} style={{ width: '100%', padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }} />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                      <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 3 }}>Password</label>
+                                      <input type="text" placeholder="password" value={newServer.loginPassword} onChange={(e) => setNewServer({ ...newServer, loginPassword: e.target.value })} style={{ width: '100%', padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 12 }} />
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 3 }}>Shortcut URL</label>
+                                    <input type="text" placeholder="st-business://com.splashtop.business/?shortcut=..." value={newServer.splashtopLink} onChange={(e) => setNewServer({ ...newServer, splashtopLink: e.target.value })} style={{ width: '100%', padding: '6px 8px', background: '#18181b', border: '1px solid #3f3f46', borderRadius: 4, color: '#fafafa', fontSize: 11 }} />
+                                    <span style={{ fontSize: 10, color: '#52525b', marginTop: 3, display: 'block' }}>Paste the st-business:// shortcut URL</span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Buttons - always visible */}
+                              <div className="form-section" style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+                                <button
+                                  className="btn-sidebar-action"
+                                  onClick={() => { setShowAddForm(false); }}
+                                  style={{ flex: 1 }}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  className="btn-sidebar-action primary"
+                                  disabled={!newServer.name.trim()}
+                                  onClick={() => {
+                                    const serverId = Date.now();
+                                    const serverEntry = {
+                                      id: serverId,
+                                      ...newServer,
+                                      serverType: 'Ensight',
+                                      ipAddress: newServer.ethernetPorts[0]?.ip || '',
+                                    };
+                                    // Add to garage servers array AND as a device on current level for map placement
+                                    const updatedGarages = garages.map(g => {
+                                      if (g.id !== selectedGarageId) return g;
+                                      return {
+                                        ...g,
+                                        servers: [...safeArray(g.servers), serverEntry],
+                                        levels: safeArray(g.levels).map(l => {
+                                          if (l.id !== selectedLevelId) return l;
+                                          return {
+                                            ...l,
+                                            devices: [...safeArray(l.devices), {
+                                              id: serverId,
+                                              name: newServer.name,
+                                              type: 'server',
+                                              pendingPlacement: true,
+                                              x: undefined,
+                                              y: undefined,
+                                            }]
+                                          };
+                                        })
+                                      };
+                                    });
+                                    setGarages(updatedGarages);
+                                    setShowAddForm(false);
+                                  }}
+                                  style={{ flex: 1 }}
+                                >
+                                  Add Server
+                                </button>
+                              </div>
+                            </>
+                          )}
+
                           {/* === SIGNS & SPACE MONITORING FORMS === */}
-                          {activeTab !== 'cameras' && (
+                          {(activeTab === 'signs' || activeTab === 'spaceMonitoring') && (
                             <>
                               {activeTab === 'signs' && (
                                 <div className="form-section">

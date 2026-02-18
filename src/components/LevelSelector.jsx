@@ -812,128 +812,6 @@ const LevelSelector = () => {
             </div>
 
             <div className="content-area">
-              {/* ========================= SERVERS SECTION ========================= */}
-              <div className="section-tools" style={{ marginBottom: 0 }}>
-                <div className="section-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-                    <line x1="6" y1="6" x2="6.01" y2="6" />
-                    <line x1="6" y1="18" x2="6.01" y2="18" />
-                  </svg>
-                  Servers ({garageServers.length})
-                </div>
-              </div>
-
-              <div className="levels-grid" style={{ marginBottom: 24 }}>
-                {garageServers.map((server) => {
-                  if (!server || server.id == null) return null;
-                  const deviceCount = serverDeviceCounts[server.id] || 0;
-                  return (
-                    <div
-                      key={server.id}
-                      className="level-card-premium"
-                      onClick={() => handleViewServer(server)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          handleViewServer(server);
-                        }
-                      }}
-                    >
-                      <div
-                        className="level-card-bg"
-                        style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}
-                      />
-                      <div className="level-card-glass" />
-                      <div className="level-card-content">
-                        <div className="level-card-actions">
-                          <button
-                            className="level-action-btn"
-                            onClick={(e) => { e.stopPropagation(); handleOpenEditServer(server); }}
-                            title="Edit Server"
-                            type="button"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
-                          </button>
-                        </div>
-
-                        <div className="level-card-center">
-                          <div className="level-icon">
-                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                              <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-                              <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-                              <line x1="6" y1="6" x2="6.01" y2="6" />
-                              <line x1="6" y1="18" x2="6.01" y2="18" />
-                            </svg>
-                          </div>
-                          <h3 className="level-name">{safeString(server.name) || 'Unnamed Server'}</h3>
-                        </div>
-
-                        <div className="level-card-stats">
-                          <div className="level-stat">
-                            <span className="level-stat-value" style={{ fontSize: 11 }}>{safeString(server.serverType) || 'N/A'}</span>
-                            <span className="level-stat-label">Type</span>
-                          </div>
-                          <div className="level-stat-divider" />
-                          <div className="level-stat">
-                            <span className="level-stat-value" style={{ fontSize: 11 }}>{safeString(server.os).split(' ').slice(0, 2).join(' ') || 'N/A'}</span>
-                            <span className="level-stat-label">OS</span>
-                          </div>
-                          <div className="level-stat-divider" />
-                          <div className="level-stat">
-                            <span className="level-stat-value">{deviceCount}</span>
-                            <span className="level-stat-label">Devices</span>
-                          </div>
-                        </div>
-
-                        {server.ipAddress && (
-                          <div className="level-equipment-breakdown">
-                            <div className="level-equip-row">
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
-                              </svg>
-                              <span className="level-equip-tag">{server.ipAddress}</span>
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="level-card-arrow">
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M5 12h14M12 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                <div
-                  className="level-card-add"
-                  onClick={handleOpenAddServerModal}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      handleOpenAddServerModal();
-                    }
-                  }}
-                >
-                  <div className="add-level-icon">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                  </div>
-                  <span>Add Server</span>
-                </div>
-              </div>
-
               <div className="section-tools">
                 <div className="section-label">All Levels</div>
               </div>
@@ -1035,45 +913,69 @@ const LevelSelector = () => {
                           </div>
                         </div>
 
-                        {deviceCount > 0 && (
-                          <div className="level-equipment-breakdown">
-                            {levelTotalCameras > 0 && (
-                              <div className="level-equip-row">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <div className="card-equipment-breakdown">
+                          {levelTotalCameras > 0 && (
+                            <div className="equipment-category">
+                              <div className="equipment-category-header">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                   <path d="M23 7l-7 5 7 5V7z" />
                                   <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
                                 </svg>
-                                {levelCounts.camFli > 0 && <span className="level-equip-tag">FLI: {levelCounts.camFli}</span>}
-                                {levelCounts.camLpr > 0 && <span className="level-equip-tag">LPR: {levelCounts.camLpr}</span>}
-                                {levelCounts.camPeople > 0 && <span className="level-equip-tag">People: {levelCounts.camPeople}</span>}
+                                <span className="equipment-category-label">Cameras</span>
+                                <span className="equipment-category-total">{levelTotalCameras}</span>
                               </div>
-                            )}
-                            {levelTotalSigns > 0 && (
-                              <div className="level-equip-row">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <div className="equipment-type-list">
+                                {levelCounts.camFli > 0 && <span className="equipment-type-tag">FLI: {levelCounts.camFli}</span>}
+                                {levelCounts.camLpr > 0 && <span className="equipment-type-tag">LPR: {levelCounts.camLpr}</span>}
+                                {levelCounts.camPeople > 0 && <span className="equipment-type-tag">People: {levelCounts.camPeople}</span>}
+                              </div>
+                            </div>
+                          )}
+                          {levelTotalSigns > 0 && (
+                            <div className="equipment-category">
+                              <div className="equipment-category-header">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                                   <line x1="9" y1="9" x2="15" y2="9" />
                                   <line x1="9" y1="15" x2="15" y2="15" />
                                 </svg>
-                                {levelCounts.signLed > 0 && <span className="level-equip-tag">LED: {levelCounts.signLed}</span>}
-                                {levelCounts.signStatic > 0 && <span className="level-equip-tag">Static: {levelCounts.signStatic}</span>}
-                                {levelCounts.signDesignable > 0 && <span className="level-equip-tag">Designable: {levelCounts.signDesignable}</span>}
+                                <span className="equipment-category-label">Signs</span>
+                                <span className="equipment-category-total">{levelTotalSigns}</span>
                               </div>
-                            )}
-                            {levelTotalSensors > 0 && (
-                              <div className="level-equip-row">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <div className="equipment-type-list">
+                                {levelCounts.signLed > 0 && <span className="equipment-type-tag">LED: {levelCounts.signLed}</span>}
+                                {levelCounts.signStatic > 0 && <span className="equipment-type-tag">Static: {levelCounts.signStatic}</span>}
+                                {levelCounts.signDesignable > 0 && <span className="equipment-type-tag">Designable: {levelCounts.signDesignable}</span>}
+                              </div>
+                            </div>
+                          )}
+                          {levelTotalSensors > 0 && (
+                            <div className="equipment-category">
+                              <div className="equipment-category-header">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                   <circle cx="12" cy="12" r="3" />
                                   <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42m12.72-12.72l1.42-1.42" />
                                 </svg>
-                                {levelCounts.sensorNwave > 0 && <span className="level-equip-tag">NWAVE: {levelCounts.sensorNwave}</span>}
-                                {levelCounts.sensorParksol > 0 && <span className="level-equip-tag">Parksol: {levelCounts.sensorParksol}</span>}
-                                {levelCounts.sensorProco > 0 && <span className="level-equip-tag">Proco: {levelCounts.sensorProco}</span>}
-                                {levelCounts.sensorEnsight > 0 && <span className="level-equip-tag">Ensight: {levelCounts.sensorEnsight}</span>}
+                                <span className="equipment-category-label">Sensors</span>
+                                <span className="equipment-category-total">{levelTotalSensors}</span>
                               </div>
-                            )}
-                          </div>
-                        )}
+                              <div className="equipment-type-list">
+                                {levelCounts.sensorNwave > 0 && <span className="equipment-type-tag">NWAVE: {levelCounts.sensorNwave}</span>}
+                                {levelCounts.sensorParksol > 0 && <span className="equipment-type-tag">Parksol: {levelCounts.sensorParksol}</span>}
+                                {levelCounts.sensorProco > 0 && <span className="equipment-type-tag">Proco: {levelCounts.sensorProco}</span>}
+                                {levelCounts.sensorEnsight > 0 && <span className="equipment-type-tag">Ensight: {levelCounts.sensorEnsight}</span>}
+                              </div>
+                            </div>
+                          )}
+                          {deviceCount === 0 && (
+                            <div className="equipment-empty">No devices configured</div>
+                          )}
+                          {deviceCount > 0 && (
+                            <div className="equipment-total-row">
+                              <span>{deviceCount} total devices</span>
+                            </div>
+                          )}
+                        </div>
 
                         <div className="level-card-arrow">
                           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

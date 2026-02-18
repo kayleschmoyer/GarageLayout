@@ -1,9 +1,22 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// Custom plugin to add COOP header for Google OAuth popup support
+function coopPlugin() {
+  return {
+    name: 'coop-header',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+        next();
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), coopPlugin()],
   base: './',
   resolve: {
     dedupe: ['react', 'react-dom'],
@@ -13,6 +26,10 @@ export default defineConfig({
     },
   },
   server: {
+    // Pin to port 5173 so the OAuth Authorized JavaScript Origin stays consistent.
+    // If this port is changed, update the origin in Google Cloud Console too.
+    port: 5173,
+    strictPort: true,
     // Handle client-side routing - serve index.html for all routes
     historyApiFallback: true,
   },

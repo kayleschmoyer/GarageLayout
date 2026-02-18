@@ -145,6 +145,7 @@ const MapCanvas = ({ mapFilter }) => {
   };
 
   const getDeviceColor = (type) => {
+    if (type === 'server') return '#a855f7';
     if (type.startsWith('cam-')) return '#3b82f6';
     if (type.startsWith('sensor-')) return '#f59e0b';
     if (type.startsWith('sign-')) return '#22c55e';
@@ -233,11 +234,17 @@ const MapCanvas = ({ mapFilter }) => {
     return lines;
   };
 
-  // Render device (cameras, space monitors, signs)
+  // Render device (cameras, space monitors, signs, servers)
   const renderDevice = (device) => {
     const isSelected = selectedDevice?.id === device.id;
     const isCamera = device.type.startsWith('cam-');
-    const color = getDeviceColor(device.type);
+    const isServer = device.type === 'server';
+    const isDualLens = device.hardwareType === 'dual-lens';
+
+    // Use per-device/stream color, fallback to type-based
+    const defaultColor = getDeviceColor(device.type);
+    const color = device.color || defaultColor;
+    const coneSize = device.coneSize ?? 40;
     const coneRotation = getConeRotation(device.rotation);
 
     return (
@@ -247,7 +254,6 @@ const MapCanvas = ({ mapFilter }) => {
         y={device.y}
         draggable
         onDragStart={(e) => {
-          // Bring device to front when dragging
           e.target.moveToTop();
         }}
         onDragEnd={(e) => handleDeviceDragEnd(device.id, e)}
@@ -264,7 +270,6 @@ const MapCanvas = ({ mapFilter }) => {
           hideTooltip();
         }}
         onMouseMove={(e) => {
-          // Update tooltip position as mouse moves
           showTooltip(device, e);
         }}
       >
@@ -274,11 +279,35 @@ const MapCanvas = ({ mapFilter }) => {
           fill="transparent"
           listening={true}
         />
-        {isCamera && (
+
+        {/* Dual lens: two cones with per-stream rotation, color, size */}
+        {isCamera && isDualLens && (
+          <>
+            <Wedge
+              rotation={getConeRotation(device.stream1?.rotation ?? device.rotation ?? 0)}
+              angle={60}
+              radius={isSelected ? (device.stream1?.coneSize ?? coneSize) + 10 : (device.stream1?.coneSize ?? coneSize)}
+              fill={device.stream1?.color || color}
+              opacity={isSelected ? 0.25 : 0.15}
+              listening={false}
+            />
+            <Wedge
+              rotation={getConeRotation(device.stream2?.rotation ?? device.rotation ?? 0)}
+              angle={60}
+              radius={isSelected ? (device.stream2?.coneSize ?? coneSize) + 10 : (device.stream2?.coneSize ?? coneSize)}
+              fill={device.stream2?.color || color}
+              opacity={isSelected ? 0.25 : 0.15}
+              listening={false}
+            />
+          </>
+        )}
+
+        {/* Single lens: one cone */}
+        {isCamera && !isDualLens && (
           <Wedge
             rotation={coneRotation}
             angle={60}
-            radius={isSelected ? 50 : 40}
+            radius={isSelected ? coneSize + 10 : coneSize}
             fill={color}
             opacity={isSelected ? 0.25 : 0.15}
             listening={false}
@@ -287,7 +316,7 @@ const MapCanvas = ({ mapFilter }) => {
 
         <Circle
           radius={isSelected ? 14 : 10}
-          fill={color}
+          fill={isServer ? '#a855f7' : color}
           stroke={isSelected ? '#fff' : 'rgba(255,255,255,0.3)'}
           strokeWidth={isSelected ? 2 : 1}
           shadowColor="black"
@@ -310,6 +339,10 @@ const MapCanvas = ({ mapFilter }) => {
         )}
         {device.type === 'sign-static' && (
           <Text text="S" fontSize={10} fill="white" fontStyle="bold" offsetX={3} offsetY={5} />
+        )}
+
+        {isServer && (
+          <Text text="SRV" fontSize={8} fill="white" fontStyle="bold" offsetX={9} offsetY={4} />
         )}
 
         {device.type?.startsWith('sensor-') && (
@@ -461,7 +494,7 @@ const MapCanvas = ({ mapFilter }) => {
           {/* Grid */}
           {renderGrid()}
 
-          {/* Devices (cameras, signs, space monitors) - skip devices pending placement, apply map filter */}
+          {/* Devices (cameras, signs, space monitors, servers) - skip devices pending placement, apply map filter */}
           {currentLevel.devices?.filter(device => {
             if (device.pendingPlacement) return false;
             if (!mapFilter || mapFilter.length === 0) return true; // No filter, show all
@@ -469,6 +502,7 @@ const MapCanvas = ({ mapFilter }) => {
             if (mapFilter.includes('cameras') && device.type?.startsWith('cam-')) return true;
             if (mapFilter.includes('spaceMonitoring') && device.type?.startsWith('sensor-')) return true;
             if (mapFilter.includes('signs') && device.type?.startsWith('sign-')) return true;
+            if (mapFilter.includes('servers') && device.type === 'server') return true;
             return false;
           }).map(device => renderDevice(device))}
         </Layer>
