@@ -4541,6 +4541,61 @@
   color: var(--joy-palette-neutral-500);
 }
 
+/* Inspector Tab Bar */
+.inspector-tab-bar {
+  display: flex;
+  padding: 0 8px;
+  background: var(--joy-palette-background-surface);
+  border-bottom: 1px solid var(--joy-palette-neutral-200);
+  flex-shrink: 0;
+  gap: 1px;
+}
+
+.inspector-tab-btn {
+  flex: 1;
+  padding: 9px 4px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--joy-palette-neutral-500);
+  font-size: 11px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.inspector-tab-btn:hover {
+  color: var(--joy-palette-neutral-700);
+  background: var(--joy-palette-neutral-50);
+}
+
+.inspector-tab-btn.active {
+  color: var(--joy-palette-primary-600);
+  font-weight: 600;
+  border-bottom-color: var(--joy-palette-primary-500);
+}
+
+[data-joy-color-scheme="dark"] .inspector-tab-bar {
+  background: #18181b;
+  border-bottom-color: #27272a;
+}
+
+[data-joy-color-scheme="dark"] .inspector-tab-btn {
+  color: #71717a;
+}
+
+[data-joy-color-scheme="dark"] .inspector-tab-btn:hover {
+  color: #a1a1aa;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+[data-joy-color-scheme="dark"] .inspector-tab-btn.active {
+  color: #fafafa;
+  border-bottom-color: #3b82f6;
+}
+
 .inspector-scroll {
   flex: 1;
   overflow-y: auto;
