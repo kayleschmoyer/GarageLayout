@@ -85,6 +85,45 @@ const safeNumber = (val, fallback = 0) => {
 };
 const sanitizeString = (val) => safeString(val).trim();
 
+const SERVER_TYPES = [
+  'Recording Server',
+  'Processing Server',
+  'Edge Server',
+  'Management Server',
+  'Storage Server'
+];
+
+const OS_OPTIONS = [
+  'Windows Server 2022',
+  'Windows Server 2019',
+  'Windows 11 Pro',
+  'Windows 10 Pro',
+  'Ubuntu 22.04 LTS',
+  'Ubuntu 20.04 LTS',
+  'CentOS 7',
+  'Debian 12',
+  'Other'
+];
+
+const DEFAULT_NEW_SERVER = Object.freeze({
+  name: '',
+  username: '',
+  password: '',
+  ipAddress: '',
+  serverType: 'Recording Server',
+  os: 'Windows Server 2022',
+  details: ''
+});
+
+const generateServerId = (servers) => {
+  const safeServers = safeArray(servers);
+  if (safeServers.length === 0) return 1;
+  const ids = safeServers
+    .map(s => (s && typeof s.id === 'number' ? s.id : 0))
+    .filter(id => id > 0);
+  return ids.length > 0 ? Math.max(...ids) + 1 : 1;
+};
+
 // Map US state abbreviations to IANA timezone identifiers
 const STATE_TO_TIMEZONE = {
   // Eastern Time
@@ -292,6 +331,99 @@ const EditorView = () => {
     });
     return signsList;
   }, [garage]);
+
+  // Count devices per server
+  const serverDeviceCounts = useMemo(() => {
+    const counts = {};
+    if (!garage) return counts;
+    safeArray(garage.levels).forEach(lvl => {
+      safeArray(lvl?.devices).forEach(d => {
+        if (d?.serverId) {
+          counts[d.serverId] = (counts[d.serverId] || 0) + 1;
+        }
+      });
+    });
+    return counts;
+  }, [garage]);
+
+  // Server CRUD handlers
+  const addServer = useCallback(() => {
+    const trimmedName = sanitizeString(newServer.name);
+    if (!trimmedName) return;
+
+    const updatedGarages = garages.map(g => {
+      if (!g || g.id !== selectedGarageId) return g;
+      const newId = generateServerId(g.servers);
+      return {
+        ...g,
+        servers: [
+          ...safeArray(g.servers),
+          {
+            id: newId,
+            name: trimmedName,
+            username: safeString(newServer.username).trim(),
+            password: safeString(newServer.password),
+            ipAddress: safeString(newServer.ipAddress).trim(),
+            serverType: safeString(newServer.serverType) || 'Recording Server',
+            os: safeString(newServer.os) || 'Windows Server 2022',
+            details: safeString(newServer.details).trim()
+          }
+        ]
+      };
+    });
+
+    setGarages(updatedGarages);
+    setNewServer({ ...DEFAULT_NEW_SERVER });
+    setShowServerAddForm(false);
+  }, [newServer, garages, selectedGarageId, setGarages]);
+
+  const updateServer = useCallback(() => {
+    if (!editingServer || editingServer.id == null) return;
+    const trimmedName = sanitizeString(editingServer.name);
+    if (!trimmedName) return;
+
+    const updatedGarages = garages.map(g => {
+      if (!g || g.id !== selectedGarageId) return g;
+      return {
+        ...g,
+        servers: safeArray(g.servers).map(s => {
+          if (!s || s.id !== editingServer.id) return s;
+          return {
+            ...s,
+            name: trimmedName,
+            username: safeString(editingServer.username).trim(),
+            password: safeString(editingServer.password),
+            ipAddress: safeString(editingServer.ipAddress).trim(),
+            serverType: safeString(editingServer.serverType) || 'Recording Server',
+            os: safeString(editingServer.os) || 'Windows Server 2022',
+            details: safeString(editingServer.details).trim()
+          };
+        })
+      };
+    });
+
+    setGarages(updatedGarages);
+    setEditingServer(null);
+  }, [editingServer, garages, selectedGarageId, setGarages]);
+
+  const deleteServer = useCallback((serverId) => {
+    if (serverId == null) return;
+
+    const updatedGarages = garages.map(g => {
+      if (!g || g.id !== selectedGarageId) return g;
+      return {
+        ...g,
+        servers: safeArray(g.servers).filter(s => s && s.id !== serverId)
+      };
+    });
+
+    setGarages(updatedGarages);
+    setEditingServer(null);
+  }, [garages, selectedGarageId, setGarages]);
+
+  const toggleServerPassword = useCallback((serverId) => {
+    setShowServerPasswords(prev => ({ ...prev, [serverId]: !prev[serverId] }));
+  }, []);
 
   // Address
   const fullAddress = useMemo(() => {
@@ -1664,6 +1796,29 @@ const EditorView = () => {
                           <path d="M18.364 5.636a9 9 0 010 12.728" />
                         </svg>
                       </button>
+                      <button
+                        onClick={() => { setSidebarCollapsed(false); setActiveTab('servers'); }}
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 8,
+                          border: activeTab === 'servers' ? '1px solid #3b82f6' : '1px solid transparent',
+                          background: activeTab === 'servers' ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                          color: activeTab === 'servers' ? '#3b82f6' : theme.textMuted,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                        title="Servers"
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                          <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                          <line x1="6" y1="6" x2="6.01" y2="6" />
+                          <line x1="6" y1="18" x2="6.01" y2="18" />
+                        </svg>
+                      </button>
                     </div>
                   ) : (
                     <>
@@ -1716,11 +1871,358 @@ const EditorView = () => {
                         </svg>
                         <span className="tab-label-modern">Space Monitoring</span>
                       </button>
+                      <button
+                        className={`palette-tab-modern ${activeTab === 'servers' ? 'active' : ''}`}
+                        onClick={() => { setActiveTab('servers'); setShowAddForm(false); setShowServerAddForm(false); setEditingServer(null); }}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                          <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                          <line x1="6" y1="6" x2="6.01" y2="6" />
+                          <line x1="6" y1="18" x2="6.01" y2="18" />
+                        </svg>
+                        <span className="tab-label-modern">Servers</span>
+                      </button>
                     </div>
                   </div>
 
                   <div className="palette-content-modern">
-                    {!showAddForm ? (
+                    {/* ========================= SERVERS TAB ========================= */}
+                    {activeTab === 'servers' ? (
+                      <>
+                        <div className="palette-title">
+                          Servers
+                        </div>
+
+                        {!showServerAddForm && !editingServer && (
+                          <button
+                            className="btn-sidebar-action primary"
+                            style={{ marginBottom: 16 }}
+                            onClick={() => { setShowServerAddForm(true); setNewServer({ ...DEFAULT_NEW_SERVER }); }}
+                          >
+                            + Add Server
+                          </button>
+                        )}
+
+                        {/* Add Server Form */}
+                        {showServerAddForm && !editingServer && (
+                          <div style={{ marginBottom: 16, padding: 12, background: theme.inputBg, borderRadius: 8, border: `1px solid ${theme.sidebarBorder}` }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                              <button
+                                onClick={() => setShowServerAddForm(false)}
+                                style={{ background: 'none', border: 'none', color: theme.textMuted, cursor: 'pointer', padding: '2px 4px', borderRadius: 4, display: 'flex', alignItems: 'center' }}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6" /></svg>
+                              </button>
+                              <span style={{ fontWeight: 600, fontSize: 13, color: theme.text }}>Add Server</span>
+                            </div>
+
+                            <div className="form-section" style={{ marginBottom: 8 }}>
+                              <label className="form-label-small">Server Name</label>
+                              <input
+                                type="text"
+                                placeholder="e.g., NVR-01"
+                                value={newServer.name}
+                                onChange={(e) => setNewServer({ ...newServer, name: e.target.value })}
+                                autoFocus
+                                style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.bgSurface, color: theme.text, boxSizing: 'border-box' }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                              <div className="form-section">
+                                <label className="form-label-small">Server Type</label>
+                                <select
+                                  value={newServer.serverType}
+                                  onChange={(e) => setNewServer({ ...newServer, serverType: e.target.value })}
+                                  style={{ width: '100%', padding: '8px 10px', fontSize: 12, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.bgSurface, color: theme.text }}
+                                >
+                                  {SERVER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                              </div>
+                              <div className="form-section">
+                                <label className="form-label-small">OS</label>
+                                <select
+                                  value={newServer.os}
+                                  onChange={(e) => setNewServer({ ...newServer, os: e.target.value })}
+                                  style={{ width: '100%', padding: '8px 10px', fontSize: 12, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.bgSurface, color: theme.text }}
+                                >
+                                  {OS_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                                </select>
+                              </div>
+                            </div>
+
+                            <div className="form-section" style={{ marginBottom: 8 }}>
+                              <label className="form-label-small">IP Address</label>
+                              <input
+                                type="text"
+                                placeholder="e.g., 10.16.1.100"
+                                value={newServer.ipAddress}
+                                onChange={(e) => setNewServer({ ...newServer, ipAddress: e.target.value })}
+                                style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.bgSurface, color: theme.text, boxSizing: 'border-box' }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                              <div className="form-section">
+                                <label className="form-label-small">Username</label>
+                                <input
+                                  type="text"
+                                  placeholder="admin"
+                                  value={newServer.username}
+                                  onChange={(e) => setNewServer({ ...newServer, username: e.target.value })}
+                                  style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.bgSurface, color: theme.text, boxSizing: 'border-box' }}
+                                />
+                              </div>
+                              <div className="form-section">
+                                <label className="form-label-small">Password</label>
+                                <input
+                                  type="password"
+                                  placeholder="********"
+                                  value={newServer.password}
+                                  onChange={(e) => setNewServer({ ...newServer, password: e.target.value })}
+                                  style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.bgSurface, color: theme.text, boxSizing: 'border-box' }}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="form-section" style={{ marginBottom: 12 }}>
+                              <label className="form-label-small">Details / Notes</label>
+                              <input
+                                type="text"
+                                placeholder="Any additional details..."
+                                value={newServer.details}
+                                onChange={(e) => setNewServer({ ...newServer, details: e.target.value })}
+                                style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.bgSurface, color: theme.text, boxSizing: 'border-box' }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button
+                                className="btn-sidebar-action"
+                                onClick={() => setShowServerAddForm(false)}
+                                style={{ flex: 1 }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                className="btn-sidebar-action primary"
+                                onClick={addServer}
+                                disabled={!newServer.name.trim()}
+                                style={{ flex: 1 }}
+                              >
+                                Add Server
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Edit Server Form */}
+                        {editingServer && (
+                          <div style={{ marginBottom: 16, padding: 12, background: theme.inputBg, borderRadius: 8, border: `1px solid ${theme.sidebarBorder}` }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                              <button
+                                onClick={() => setEditingServer(null)}
+                                style={{ background: 'none', border: 'none', color: theme.textMuted, cursor: 'pointer', padding: '2px 4px', borderRadius: 4, display: 'flex', alignItems: 'center' }}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6" /></svg>
+                              </button>
+                              <span style={{ fontWeight: 600, fontSize: 13, color: theme.text }}>Edit Server</span>
+                            </div>
+
+                            <div className="form-section" style={{ marginBottom: 8 }}>
+                              <label className="form-label-small">Server Name</label>
+                              <input
+                                type="text"
+                                placeholder="e.g., NVR-01"
+                                value={editingServer.name || ''}
+                                onChange={(e) => setEditingServer({ ...editingServer, name: e.target.value })}
+                                autoFocus
+                                style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.bgSurface, color: theme.text, boxSizing: 'border-box' }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                              <div className="form-section">
+                                <label className="form-label-small">Server Type</label>
+                                <select
+                                  value={editingServer.serverType || ''}
+                                  onChange={(e) => setEditingServer({ ...editingServer, serverType: e.target.value })}
+                                  style={{ width: '100%', padding: '8px 10px', fontSize: 12, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.bgSurface, color: theme.text }}
+                                >
+                                  {SERVER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                              </div>
+                              <div className="form-section">
+                                <label className="form-label-small">OS</label>
+                                <select
+                                  value={editingServer.os || ''}
+                                  onChange={(e) => setEditingServer({ ...editingServer, os: e.target.value })}
+                                  style={{ width: '100%', padding: '8px 10px', fontSize: 12, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.bgSurface, color: theme.text }}
+                                >
+                                  {OS_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                                </select>
+                              </div>
+                            </div>
+
+                            <div className="form-section" style={{ marginBottom: 8 }}>
+                              <label className="form-label-small">IP Address</label>
+                              <input
+                                type="text"
+                                placeholder="e.g., 10.16.1.100"
+                                value={editingServer.ipAddress || ''}
+                                onChange={(e) => setEditingServer({ ...editingServer, ipAddress: e.target.value })}
+                                style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.bgSurface, color: theme.text, boxSizing: 'border-box' }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                              <div className="form-section">
+                                <label className="form-label-small">Username</label>
+                                <input
+                                  type="text"
+                                  placeholder="admin"
+                                  value={editingServer.username || ''}
+                                  onChange={(e) => setEditingServer({ ...editingServer, username: e.target.value })}
+                                  style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.bgSurface, color: theme.text, boxSizing: 'border-box' }}
+                                />
+                              </div>
+                              <div className="form-section">
+                                <label className="form-label-small">Password</label>
+                                <input
+                                  type="password"
+                                  placeholder="********"
+                                  value={editingServer.password || ''}
+                                  onChange={(e) => setEditingServer({ ...editingServer, password: e.target.value })}
+                                  style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.bgSurface, color: theme.text, boxSizing: 'border-box' }}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="form-section" style={{ marginBottom: 12 }}>
+                              <label className="form-label-small">Details / Notes</label>
+                              <input
+                                type="text"
+                                placeholder="Any additional details..."
+                                value={editingServer.details || ''}
+                                onChange={(e) => setEditingServer({ ...editingServer, details: e.target.value })}
+                                style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.bgSurface, color: theme.text, boxSizing: 'border-box' }}
+                              />
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button
+                                className="btn-sidebar-action"
+                                onClick={() => deleteServer(editingServer.id)}
+                                style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.3)' }}
+                              >
+                                Delete
+                              </button>
+                              <button
+                                className="btn-sidebar-action"
+                                onClick={() => setEditingServer(null)}
+                                style={{ flex: 1 }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                className="btn-sidebar-action primary"
+                                onClick={updateServer}
+                                disabled={!editingServer.name?.trim()}
+                                style={{ flex: 1 }}
+                              >
+                                Save
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Server List */}
+                        <div className="device-list-modern" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {garageServers.length === 0 && !showServerAddForm && (
+                            <div className="sidebar-empty-state">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                                <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                                <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                                <line x1="6" y1="6" x2="6.01" y2="6" />
+                                <line x1="6" y1="18" x2="6.01" y2="18" />
+                              </svg>
+                              <p>No servers added yet</p>
+                            </div>
+                          )}
+
+                          {garageServers.map(server => (
+                            <div
+                              key={server.id}
+                              className="modern-device-item"
+                              onClick={() => setEditingServer({
+                                id: server.id,
+                                name: safeString(server.name),
+                                username: safeString(server.username),
+                                password: safeString(server.password),
+                                ipAddress: safeString(server.ipAddress),
+                                serverType: safeString(server.serverType),
+                                os: safeString(server.os),
+                                details: safeString(server.details)
+                              })}
+                              style={{ cursor: 'pointer' }}
+                            >
+                              <div className="device-icon-wrapper">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                                  <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                                  <line x1="6" y1="6" x2="6.01" y2="6" />
+                                  <line x1="6" y1="18" x2="6.01" y2="18" />
+                                </svg>
+                              </div>
+                              <div className="device-info-modern" style={{ flex: 1 }}>
+                                <span className="device-name-modern">{server.name}</span>
+                                <span className="device-type-modern" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                  {server.serverType && <span>{server.serverType}</span>}
+                                  {server.ipAddress && <span style={{ fontSize: 10, opacity: 0.7 }}>{server.ipAddress}</span>}
+                                </span>
+                                <span className="device-type-modern" style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                                  <span style={{ fontSize: 10, color: '#60a5fa', background: 'rgba(59,130,246,0.12)', padding: '1px 6px', borderRadius: 3 }}>
+                                    {serverDeviceCounts[server.id] || 0} device{(serverDeviceCounts[server.id] || 0) !== 1 ? 's' : ''}
+                                  </span>
+                                  {server.os && (
+                                    <span style={{ fontSize: 10, color: theme.textMuted, background: 'rgba(113,113,122,0.12)', padding: '1px 6px', borderRadius: 3 }}>
+                                      {server.os.split(' ').slice(0, 2).join(' ')}
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingServer({
+                                    id: server.id,
+                                    name: safeString(server.name),
+                                    username: safeString(server.username),
+                                    password: safeString(server.password),
+                                    ipAddress: safeString(server.ipAddress),
+                                    serverType: safeString(server.serverType),
+                                    os: safeString(server.os),
+                                    details: safeString(server.details)
+                                  });
+                                }}
+                                style={{
+                                  padding: '4px 8px',
+                                  background: 'transparent',
+                                  border: `1px solid ${theme.sidebarBorder}`,
+                                  borderRadius: 4,
+                                  color: theme.textMuted,
+                                  fontSize: 10,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Edit
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : !showAddForm ? (
                       <>
                         <div className="palette-title">
                           {activeTab === 'cameras' ? 'Cameras' : activeTab === 'signs' ? 'Signs' : activeTab === 'servers' ? 'Servers' : 'Space Monitoring'} {activeTab === 'servers' ? `for ${garage?.name || 'Site'}` : `on ${level.name}`}
@@ -1834,21 +2336,13 @@ const EditorView = () => {
                                     <span style={{ color: '#f59e0b', fontSize: 10 }}>• Not placed</span>
                                   )}
                                 </span>
-                                {(cam.serverId || cam.signId) && (
+                                {cam.serverId && (
                                   <span className="device-type-modern" style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                                    {cam.serverId && (() => {
+                                    {(() => {
                                       const srv = garageServers.find(s => s.id === cam.serverId);
                                       return srv ? (
                                         <span style={{ fontSize: 10, color: '#60a5fa', background: 'rgba(59,130,246,0.12)', padding: '1px 6px', borderRadius: 3 }}>
                                           {srv.name}
-                                        </span>
-                                      ) : null;
-                                    })()}
-                                    {cam.signId && (() => {
-                                      const sgn = allGarageSigns.find(s => s.id === cam.signId);
-                                      return sgn ? (
-                                        <span style={{ fontSize: 10, color: '#4ade80', background: 'rgba(34,197,94,0.12)', padding: '1px 6px', borderRadius: 3 }}>
-                                          {sgn.name}
                                         </span>
                                       ) : null;
                                     })()}
@@ -2654,26 +3148,6 @@ const EditorView = () => {
                                       </select>
                                     </div>
 
-                                    <div className="form-section" style={{ marginTop: 12 }}>
-                                      <label className="form-label-small" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                          <rect x="2" y="4" width="20" height="12" rx="2" />
-                                          <path d="M6 8h12M6 12h8" />
-                                          <path d="M12 16v4" />
-                                        </svg>
-                                        Sign Assignment
-                                      </label>
-                                      <select
-                                        value={newDevice.signId || ''}
-                                        onChange={(e) => setNewDevice({ ...newDevice, signId: e.target.value ? Number(parseFloat(e.target.value)) : '' })}
-                                        style={{ width: '100%', padding: '10px 12px', fontSize: 13, borderRadius: 6, border: `1px solid ${theme.inputBorder}`, background: theme.inputBg, color: theme.text }}
-                                      >
-                                        <option value="">No sign assigned</option>
-                                        {allGarageSigns.map(s => (
-                                          <option key={s.id} value={s.id}>{s.name} ({s.levelName})</option>
-                                        ))}
-                                      </select>
-                                    </div>
                                   </>
                                 );
                               })()}
